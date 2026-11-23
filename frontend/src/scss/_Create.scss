@@ -1,0 +1,163 @@
+/*
+Copyright 2019-2024 The Tekton Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+@use '@carbon/react/scss/config' as *;
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.tkn--create {
+  max-inline-size: 64rem;
+  margin: 0 auto;
+  padding: 0 1rem 3rem;
+
+  .#{$prefix}--fieldset {
+    margin-block-end: 1.5rem;
+  }
+
+  .#{$prefix}--fieldset:not(:last-of-type) {
+    margin-block-end: 0;
+  }
+
+  .#{$prefix}--form__helper-text {
+    max-inline-size: 100%;
+    color: $text-helper;
+    font-size: 0.775rem;
+  }
+
+  .#{$prefix}--label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: $text-primary;
+    margin-bottom: 0.375rem;
+  }
+
+  .#{$prefix}--label--disabled {
+    color: $text-helper;
+  }
+
+  .#{$prefix}--text-input,
+  .#{$prefix}--select-input,
+  .#{$prefix}--dropdown {
+    height: 2.25rem !important; // 36px
+    min-height: 2.25rem !important;
+    border-radius: var(--tkn-radius-md);
+    border: 1px solid var(--cds-border-subtle, #cbd5e1);
+    background-color: var(--cds-layer-01, #ffffff);
+    font-size: 0.875rem;
+  }
+
+  .#{$prefix}--text-input__field-wrapper {
+    inline-size: 100%;
+  }
+
+  .#{$prefix}--list-box__wrapper,
+  .#{$prefix}--form-item {
+    margin-block-end: 1.25rem;
+    max-inline-size: 100%;
+  }
+
+  // Modern card container for form
+  .#{$prefix}--form {
+    background: var(--cds-layer-01, #ffffff);
+    border: 1px solid var(--cds-border-subtle-01, #e2e8f0);
+    border-radius: var(--tkn-radius-lg);
+    padding: 1.75rem 2rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+
+  .#{$prefix}--form > .#{$prefix}--btn:first-of-type {
+    margin-block-start: 1.5rem;
+  }
+
+  .#{$prefix}--btn {
+    height: 2.25rem !important; // 36px
+    min-height: 2.25rem !important;
+    padding-inline: 1.125rem !important;
+    padding-block: 0 !important;
+    border-radius: var(--tkn-radius-md) !important;
+    font-size: 0.8125rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.01em;
+    display: inline-flex !important;
+    flex-direction: row-reverse !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.4375rem !important;
+
+    svg,
+    .#{$prefix}--btn__icon {
+      position: static !important;
+      margin: 0 !important;
+      width: 1rem !important;
+      height: 1rem !important;
+      flex-shrink: 0 !important;
+    }
+  }
+
+  .#{$prefix}--btn.#{$prefix}--btn--secondary {
+    background-color: #ffffff !important;
+    color: #475569 !important;
+    border: 1px solid #cbd5e1 !important;
+    margin-inline-start: 0.75rem;
+
+    &:hover {
+      background-color: #f1f5f9 !important;
+      border-color: #94a3b8 !important;
+      color: #0f172a !important;
+    }
+  }
+
+  .#{$prefix}--btn.#{$prefix}--btn--primary {
+    background-color: var(--cds-link-primary, #0f62fe) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 4px rgba(15, 98, 254, 0.25) !important;
+
+    &:hover {
+      background-color: #0353e9 !important;
+      box-shadow: 0 4px 10px rgba(15, 98, 254, 0.35) !important;
+    }
+  }
+
+  .tkn--editor {
+    @include type-style('code-02');
+  }
+}
+
+.tkn--create--heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: 1.25rem;
+  padding-block-end: 0.75rem;
+  border-block-end: 1px solid $border-subtle;
+
+  h1 {
+    font-size: 1.5rem !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.02em !important;
+    margin-block: 0 !important;
+    color: $text-primary;
+  }
+
+  .tkn--create--yaml-mode {
+    margin-inline-start: auto;
+
+    .#{$prefix}--btn {
+      height: 2.125rem !important; // 34px
+      min-height: 2.125rem !important;
+      border-radius: var(--tkn-radius-md) !important;
+      font-size: 0.8125rem !important;
+    }
+  }
+}

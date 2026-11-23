@@ -1,4 +1,7 @@
 # compiled output
+/frontend/dist
+/data
+/backend/data
 /.vitest
 /coverage
 /cmd/dashboard/kodata/
