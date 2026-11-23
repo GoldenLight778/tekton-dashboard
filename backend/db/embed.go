@@ -4,5 +4,5 @@ import "embed"
 
 // MigrationsFS embeds all SQL migration files for auto-migration
 //
-//go:embed migrations/*.sql
+//go:embed migrations/*
 var MigrationsFS embed.FS

@@ -1,0 +1,21 @@
+# Development Environment Configuration
+app:
+  env: dev
+  addr: ":8080"
+  log_level: debug
+  jwt_secret: dev-jwt-secret-do-not-use-in-production
+  secret_key: 0123456789abcdef0123456789abcdef
+
+database:
+  driver: sqlite
+  dsn: ./data/platform-dev.db
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+
+kubernetes:
+  mode: minikube # minikube | kubeconfig | in-cluster | fake
+  kubeconfig: "" # empty = default ~/.kube/config
+  context: minikube # Minikube cluster context name
+  namespace: default
+  insecure: false

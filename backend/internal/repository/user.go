@@ -31,14 +31,19 @@ type UserRepository interface {
 	Count(ctx context.Context) (int, error)
 }
 
-// SQLiteUserRepository implements UserRepository on SQLite
+// SQLiteUserRepository implements UserRepository on SQLite/MySQL/Postgres
 type SQLiteUserRepository struct {
-	db *sql.DB
+	db     *sql.DB
+	driver string
 }
 
 // NewUserRepository creates a new SQLiteUserRepository
-func NewUserRepository(db *sql.DB) *SQLiteUserRepository {
-	return &SQLiteUserRepository{db: db}
+func NewUserRepository(db *sql.DB, driver ...string) *SQLiteUserRepository {
+	d := "sqlite"
+	if len(driver) > 0 && driver[0] != "" {
+		d = driver[0]
+	}
+	return &SQLiteUserRepository{db: db, driver: d}
 }
 
 func (r *SQLiteUserRepository) Create(ctx context.Context, u *User) error {
@@ -50,7 +55,7 @@ func (r *SQLiteUserRepository) Create(ctx context.Context, u *User) error {
 	}
 	u.UpdatedAt = now
 
-	_, err := r.db.ExecContext(ctx, query, u.ID, u.Username, u.PasswordHash, u.Role, u.CreatedAt, u.UpdatedAt)
+	_, err := r.db.ExecContext(ctx, Rebind(r.driver, query), u.ID, u.Username, u.PasswordHash, u.Role, u.CreatedAt, u.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create user: %w", err)
 	}
@@ -59,7 +64,7 @@ func (r *SQLiteUserRepository) Create(ctx context.Context, u *User) error {
 
 func (r *SQLiteUserRepository) GetByID(ctx context.Context, id string) (*User, error) {
 	query := `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE id = ?`
-	row := r.db.QueryRowContext(ctx, query, id)
+	row := r.db.QueryRowContext(ctx, Rebind(r.driver, query), id)
 
 	var u User
 	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt)
@@ -74,7 +79,7 @@ func (r *SQLiteUserRepository) GetByID(ctx context.Context, id string) (*User, e
 
 func (r *SQLiteUserRepository) GetByUsername(ctx context.Context, username string) (*User, error) {
 	query := `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE username = ?`
-	row := r.db.QueryRowContext(ctx, query, username)
+	row := r.db.QueryRowContext(ctx, Rebind(r.driver, query), username)
 
 	var u User
 	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt)

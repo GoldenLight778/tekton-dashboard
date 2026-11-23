@@ -27,23 +27,38 @@ type AuditRepository interface {
 
 // SQLiteAuditRepository implements AuditRepository
 type SQLiteAuditRepository struct {
-	db *sql.DB
+	db     *sql.DB
+	driver string
 }
 
 // NewAuditRepository creates a new SQLiteAuditRepository
-func NewAuditRepository(db *sql.DB) *SQLiteAuditRepository {
-	return &SQLiteAuditRepository{db: db}
+func NewAuditRepository(db *sql.DB, driver ...string) *SQLiteAuditRepository {
+	d := "sqlite"
+	if len(driver) > 0 && driver[0] != "" {
+		d = driver[0]
+	}
+	return &SQLiteAuditRepository{db: db, driver: d}
 }
 
 func (r *SQLiteAuditRepository) Record(ctx context.Context, log *AuditLog) error {
-	query := `INSERT INTO audit_logs (user_id, action, resource_type, resource_id, detail, ip, created_at)
-	          VALUES (?, ?, ?, ?, ?, ?, ?)`
 	now := time.Now().UTC()
 	if log.CreatedAt.IsZero() {
 		log.CreatedAt = now
 	}
 
-	res, err := r.db.ExecContext(ctx, query, log.UserID, log.Action, log.ResourceType, log.ResourceID, log.Detail, log.IP, log.CreatedAt)
+	if r.driver == "postgres" || r.driver == "pgx" {
+		query := `INSERT INTO audit_logs (user_id, action, resource_type, resource_id, detail, ip, created_at)
+		          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`
+		err := r.db.QueryRowContext(ctx, query, log.UserID, log.Action, log.ResourceType, log.ResourceID, log.Detail, log.IP, log.CreatedAt).Scan(&log.ID)
+		if err != nil {
+			return fmt.Errorf("failed to record audit log: %w", err)
+		}
+		return nil
+	}
+
+	query := `INSERT INTO audit_logs (user_id, action, resource_type, resource_id, detail, ip, created_at)
+	          VALUES (?, ?, ?, ?, ?, ?, ?)`
+	res, err := r.db.ExecContext(ctx, Rebind(r.driver, query), log.UserID, log.Action, log.ResourceType, log.ResourceID, log.Detail, log.IP, log.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to record audit log: %w", err)
 	}
@@ -69,7 +84,7 @@ func (r *SQLiteAuditRepository) List(ctx context.Context, page, pageSize int) ([
 
 	query := `SELECT id, user_id, action, resource_type, resource_id, detail, ip, created_at
 	          FROM audit_logs ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, query, pageSize, offset)
+	rows, err := r.db.QueryContext(ctx, Rebind(r.driver, query), pageSize, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list audit logs: %w", err)
 	}

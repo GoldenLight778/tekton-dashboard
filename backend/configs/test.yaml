@@ -1,0 +1,21 @@
+# Test Environment Configuration
+app:
+  env: test
+  addr: ":8080"
+  log_level: info
+  jwt_secret: test-jwt-secret-do-not-use-in-production
+  secret_key: 0123456789abcdef0123456789abcdef
+
+database:
+  driver: sqlite
+  dsn: ":memory:"
+  max_open_conns: 1
+  max_idle_conns: 1
+  conn_max_lifetime: 0s
+
+kubernetes:
+  mode: fake # fake client for isolated unit/integration tests
+  kubeconfig: ""
+  context: ""
+  namespace: tekton-pipelines
+  insecure: false

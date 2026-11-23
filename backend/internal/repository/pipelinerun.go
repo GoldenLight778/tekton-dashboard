@@ -36,12 +36,17 @@ type PipelineRunRepository interface {
 
 // SQLitePipelineRunRepository implements PipelineRunRepository
 type SQLitePipelineRunRepository struct {
-	db *sql.DB
+	db     *sql.DB
+	driver string
 }
 
 // NewPipelineRunRepository creates a new SQLitePipelineRunRepository
-func NewPipelineRunRepository(db *sql.DB) *SQLitePipelineRunRepository {
-	return &SQLitePipelineRunRepository{db: db}
+func NewPipelineRunRepository(db *sql.DB, driver ...string) *SQLitePipelineRunRepository {
+	d := "sqlite"
+	if len(driver) > 0 && driver[0] != "" {
+		d = driver[0]
+	}
+	return &SQLitePipelineRunRepository{db: db, driver: d}
 }
 
 func (r *SQLitePipelineRunRepository) Create(ctx context.Context, run *PipelineRun) error {
@@ -52,7 +57,7 @@ func (r *SQLitePipelineRunRepository) Create(ctx context.Context, run *PipelineR
 		run.CreatedAt = now
 	}
 
-	_, err := r.db.ExecContext(ctx, query, run.ID, run.PipelineID, run.K8sPipelineRunName, run.Namespace, run.Status, run.TriggeredBy, run.StartedAt, run.FinishedAt, run.CreatedAt)
+	_, err := r.db.ExecContext(ctx, Rebind(r.driver, query), run.ID, run.PipelineID, run.K8sPipelineRunName, run.Namespace, run.Status, run.TriggeredBy, run.StartedAt, run.FinishedAt, run.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create pipeline run: %w", err)
 	}
@@ -62,7 +67,7 @@ func (r *SQLitePipelineRunRepository) Create(ctx context.Context, run *PipelineR
 func (r *SQLitePipelineRunRepository) GetByID(ctx context.Context, id string) (*PipelineRun, error) {
 	query := `SELECT id, pipeline_id, k8s_pipelinerun_name, namespace, status, triggered_by, started_at, finished_at, created_at
 	          FROM pipeline_runs WHERE id = ?`
-	row := r.db.QueryRowContext(ctx, query, id)
+	row := r.db.QueryRowContext(ctx, Rebind(r.driver, query), id)
 
 	var run PipelineRun
 	var k8sName sql.NullString
@@ -94,14 +99,14 @@ func (r *SQLitePipelineRunRepository) ListByPipeline(ctx context.Context, pipeli
 	offset := (page - 1) * pageSize
 
 	var total int
-	err := r.db.QueryRowContext(ctx, `SELECT count(*) FROM pipeline_runs WHERE pipeline_id = ?`, pipelineID).Scan(&total)
+	err := r.db.QueryRowContext(ctx, Rebind(r.driver, `SELECT count(*) FROM pipeline_runs WHERE pipeline_id = ?`), pipelineID).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count pipeline runs: %w", err)
 	}
 
 	query := `SELECT id, pipeline_id, k8s_pipelinerun_name, namespace, status, triggered_by, started_at, finished_at, created_at
 	          FROM pipeline_runs WHERE pipeline_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, query, pipelineID, pageSize, offset)
+	rows, err := r.db.QueryContext(ctx, Rebind(r.driver, query), pipelineID, pageSize, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list pipeline runs: %w", err)
 	}
@@ -139,7 +144,7 @@ func (r *SQLitePipelineRunRepository) ListByProject(ctx context.Context, project
 
 	countQuery := `SELECT count(*) FROM pipeline_runs pr JOIN pipelines p ON pr.pipeline_id = p.id WHERE p.project_id = ?`
 	var total int
-	err := r.db.QueryRowContext(ctx, countQuery, projectID).Scan(&total)
+	err := r.db.QueryRowContext(ctx, Rebind(r.driver, countQuery), projectID).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count project pipeline runs: %w", err)
 	}
@@ -149,7 +154,7 @@ func (r *SQLitePipelineRunRepository) ListByProject(ctx context.Context, project
 	          JOIN pipelines p ON pr.pipeline_id = p.id 
 	          WHERE p.project_id = ? 
 	          ORDER BY pr.created_at DESC LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, query, projectID, pageSize, offset)
+	rows, err := r.db.QueryContext(ctx, Rebind(r.driver, query), projectID, pageSize, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list project pipeline runs: %w", err)
 	}
@@ -178,7 +183,7 @@ func (r *SQLitePipelineRunRepository) ListByProject(ctx context.Context, project
 
 func (r *SQLitePipelineRunRepository) UpdateStatus(ctx context.Context, id, status string, startedAt, finishedAt *time.Time) error {
 	query := `UPDATE pipeline_runs SET status = ?, started_at = COALESCE(?, started_at), finished_at = COALESCE(?, finished_at) WHERE id = ?`
-	res, err := r.db.ExecContext(ctx, query, status, startedAt, finishedAt, id)
+	res, err := r.db.ExecContext(ctx, Rebind(r.driver, query), status, startedAt, finishedAt, id)
 	if err != nil {
 		return fmt.Errorf("failed to update pipeline run status: %w", err)
 	}

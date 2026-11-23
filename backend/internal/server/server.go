@@ -16,8 +16,10 @@ import (
 	"devops-platform/internal/api"
 	"devops-platform/internal/config"
 	"devops-platform/internal/executor"
+	"devops-platform/internal/k8s"
 	"devops-platform/internal/repository"
 	"devops-platform/internal/service"
+	pkgrouter "devops-platform/pkg/router"
 )
 
 // Server encapsulates the HTTP server, routing, and dependencies
@@ -27,6 +29,9 @@ type Server struct {
 	db         *sql.DB
 	router     *gin.Engine
 	httpServer *http.Server
+
+	k8sBundle  *k8s.ClientBundle
+	k8sProxy   http.Handler
 
 	auditRepo       repository.AuditRepository
 	projectRepo     repository.ProjectRepository
@@ -54,14 +59,15 @@ func New(cfg *config.Config, logger *zap.Logger, db *sql.DB) (*Server, error) {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	// Initialize repositories
-	userRepo := repository.NewUserRepository(db)
-	auditRepo := repository.NewAuditRepository(db)
-	projectRepo := repository.NewProjectRepository(db)
-	pipelineRepo := repository.NewPipelineRepository(db)
-	runRepo := repository.NewPipelineRunRepository(db)
-	credRepo := repository.NewCredentialRepository(db)
-	metricsRepo := repository.NewMetricsRepository(db)
+	// Initialize repositories with dialect driver
+	dbDriver := cfg.Database.Driver
+	userRepo := repository.NewUserRepository(db, dbDriver)
+	auditRepo := repository.NewAuditRepository(db, dbDriver)
+	projectRepo := repository.NewProjectRepository(db, dbDriver)
+	pipelineRepo := repository.NewPipelineRepository(db, dbDriver)
+	runRepo := repository.NewPipelineRunRepository(db, dbDriver)
+	credRepo := repository.NewCredentialRepository(db, dbDriver)
+	metricsRepo := repository.NewMetricsRepository(db, dbDriver)
 
 	// Status update callback for executor
 	updateStatus := func(id, status string, startedAt, finishedAt *time.Time) {
@@ -71,13 +77,33 @@ func New(cfg *config.Config, logger *zap.Logger, db *sql.DB) (*Server, error) {
 		}
 		_ = runRepo.UpdateStatus(context.Background(), id, status, startedAt, finishedAt)
 	}
-	fakeExec := executor.NewFakeExecutor(updateStatus, logger)
+
+	// Determine Kubernetes execution strategy and API proxy
+	var pipelineExecutor executor.Executor
+	var k8sBundle *k8s.ClientBundle
+	var k8sProxyHandler http.Handler
+
+	bundle, err := k8s.BuildClientBundle(cfg.Kubernetes, logger)
+	if err == nil && bundle != nil {
+		k8sBundle = bundle
+		pipelineExecutor = executor.NewK8sExecutor(bundle.Dynamic, bundle.Clientset, bundle.Namespace, updateStatus, logger)
+		proxy, pErr := pkgrouter.NewProxyHandler(bundle.RestConfig, 30*time.Second)
+		if pErr != nil {
+			logger.Warn("failed to initialize K8s API proxy handler, falling back to mock APIs", zap.Error(pErr))
+		} else {
+			k8sProxyHandler = proxy
+			logger.Info("K8s API reverse proxy initialized successfully", zap.String("mode", bundle.Mode), zap.String("namespace", bundle.Namespace))
+		}
+	} else {
+		logger.Info("Using FakeExecutor for pipeline runs", zap.String("mode", cfg.Kubernetes.Mode))
+		pipelineExecutor = executor.NewFakeExecutor(updateStatus, logger)
+	}
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, logger)
 	projectService := service.NewProjectService(projectRepo, auditRepo, logger)
 	pipelineService := service.NewPipelineService(pipelineRepo, projectRepo, auditRepo, logger)
-	runService := service.NewRunService(runRepo, pipelineRepo, auditRepo, fakeExec, logger)
+	runService := service.NewRunService(runRepo, pipelineRepo, auditRepo, pipelineExecutor, logger)
 	credService := service.NewCredentialService(credRepo, projectRepo, auditRepo, cfg.SecretKey, logger)
 	metricsService := service.NewMetricsService(metricsRepo, logger)
 
@@ -91,6 +117,8 @@ func New(cfg *config.Config, logger *zap.Logger, db *sql.DB) (*Server, error) {
 		logger:          logger,
 		db:              db,
 		router:          r,
+		k8sBundle:       k8sBundle,
+		k8sProxy:        k8sProxyHandler,
 		auditRepo:       auditRepo,
 		projectRepo:     projectRepo,
 		pipelineRepo:    pipelineRepo,
@@ -142,39 +170,45 @@ func (s *Server) setupRoutes() {
 		})
 	})
 
-	// Kubernetes namespaces API compatibility
-	s.router.GET("/api/v1/namespaces", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"apiVersion": "v1",
-			"kind":       "NamespaceList",
-			"items": []gin.H{
-				{
-					"metadata": gin.H{"name": "default"},
-				},
-				{
-					"metadata": gin.H{"name": "tekton-pipelines"},
-				},
-			},
-		})
-	})
-
-	// All Tekton CRD and extension /apis/* requests handled cleanly
-	s.router.GET("/apis/*filepath", func(c *gin.Context) {
-		path := c.Param("filepath")
-		if strings.Contains(path, "extensions") {
+	// 2. Kubernetes and Tekton Proxy or Fallback Mocks
+	if s.k8sProxy != nil {
+		proxyHandler := gin.WrapH(s.k8sProxy)
+		s.router.Any("/api/v1/*filepath", proxyHandler)
+		s.router.Any("/apis/*filepath", proxyHandler)
+	} else {
+		// Mock responses when running in fake mode or when cluster is offline
+		s.router.GET("/api/v1/namespaces", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
-				"apiVersion": "dashboard.tekton.dev/v1alpha1",
-				"kind":       "ExtensionList",
+				"apiVersion": "v1",
+				"kind":       "NamespaceList",
+				"items": []gin.H{
+					{
+						"metadata": gin.H{"name": "default"},
+					},
+					{
+						"metadata": gin.H{"name": "tekton-pipelines"},
+					},
+				},
+			})
+		})
+
+		s.router.GET("/apis/*filepath", func(c *gin.Context) {
+			path := c.Param("filepath")
+			if strings.Contains(path, "extensions") {
+				c.JSON(http.StatusOK, gin.H{
+					"apiVersion": "dashboard.tekton.dev/v1alpha1",
+					"kind":       "ExtensionList",
+					"items":      []gin.H{},
+				})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"apiVersion": "tekton.dev/v1",
+				"kind":       "List",
 				"items":      []gin.H{},
 			})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"apiVersion": "tekton.dev/v1",
-			"kind":       "List",
-			"items":      []gin.H{},
 		})
-	})
+	}
 
 	// 2. Platform API v1
 	v1 := s.router.Group("/api/platform/v1")

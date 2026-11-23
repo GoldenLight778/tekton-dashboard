@@ -35,12 +35,17 @@ type ProjectRepository interface {
 
 // SQLiteProjectRepository implements ProjectRepository
 type SQLiteProjectRepository struct {
-	db *sql.DB
+	db     *sql.DB
+	driver string
 }
 
 // NewProjectRepository creates a new SQLiteProjectRepository
-func NewProjectRepository(db *sql.DB) *SQLiteProjectRepository {
-	return &SQLiteProjectRepository{db: db}
+func NewProjectRepository(db *sql.DB, driver ...string) *SQLiteProjectRepository {
+	d := "sqlite"
+	if len(driver) > 0 && driver[0] != "" {
+		d = driver[0]
+	}
+	return &SQLiteProjectRepository{db: db, driver: d}
 }
 
 func (r *SQLiteProjectRepository) Create(ctx context.Context, p *Project) error {
@@ -52,7 +57,7 @@ func (r *SQLiteProjectRepository) Create(ctx context.Context, p *Project) error 
 	}
 	p.UpdatedAt = now
 
-	_, err := r.db.ExecContext(ctx, query, p.ID, p.Name, p.Description, p.CreatedBy, p.CreatedAt, p.UpdatedAt)
+	_, err := r.db.ExecContext(ctx, Rebind(r.driver, query), p.ID, p.Name, p.Description, p.CreatedBy, p.CreatedAt, p.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create project: %w", err)
 	}
@@ -61,7 +66,7 @@ func (r *SQLiteProjectRepository) Create(ctx context.Context, p *Project) error 
 
 func (r *SQLiteProjectRepository) GetByID(ctx context.Context, id string) (*Project, error) {
 	query := `SELECT id, name, description, created_by, created_at, updated_at FROM projects WHERE id = ?`
-	row := r.db.QueryRowContext(ctx, query, id)
+	row := r.db.QueryRowContext(ctx, Rebind(r.driver, query), id)
 
 	var p Project
 	var desc sql.NullString
@@ -78,7 +83,7 @@ func (r *SQLiteProjectRepository) GetByID(ctx context.Context, id string) (*Proj
 
 func (r *SQLiteProjectRepository) GetByName(ctx context.Context, name string) (*Project, error) {
 	query := `SELECT id, name, description, created_by, created_at, updated_at FROM projects WHERE name = ?`
-	row := r.db.QueryRowContext(ctx, query, name)
+	row := r.db.QueryRowContext(ctx, Rebind(r.driver, query), name)
 
 	var p Project
 	var desc sql.NullString
@@ -110,7 +115,7 @@ func (r *SQLiteProjectRepository) List(ctx context.Context, page, pageSize int) 
 
 	query := `SELECT id, name, description, created_by, created_at, updated_at 
 	          FROM projects ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, query, pageSize, offset)
+	rows, err := r.db.QueryContext(ctx, Rebind(r.driver, query), pageSize, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list projects: %w", err)
 	}
@@ -133,7 +138,7 @@ func (r *SQLiteProjectRepository) List(ctx context.Context, page, pageSize int) 
 func (r *SQLiteProjectRepository) Update(ctx context.Context, p *Project) error {
 	query := `UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?`
 	p.UpdatedAt = time.Now().UTC()
-	res, err := r.db.ExecContext(ctx, query, p.Name, p.Description, p.UpdatedAt, p.ID)
+	res, err := r.db.ExecContext(ctx, Rebind(r.driver, query), p.Name, p.Description, p.UpdatedAt, p.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update project: %w", err)
 	}
@@ -146,7 +151,7 @@ func (r *SQLiteProjectRepository) Update(ctx context.Context, p *Project) error 
 
 func (r *SQLiteProjectRepository) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM projects WHERE id = ?`
-	res, err := r.db.ExecContext(ctx, query, id)
+	res, err := r.db.ExecContext(ctx, Rebind(r.driver, query), id)
 	if err != nil {
 		return fmt.Errorf("failed to delete project: %w", err)
 	}

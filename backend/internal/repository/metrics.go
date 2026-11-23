@@ -43,12 +43,17 @@ type MetricsRepository interface {
 
 // SQLiteMetricsRepository implements MetricsRepository
 type SQLiteMetricsRepository struct {
-	db *sql.DB
+	db     *sql.DB
+	driver string
 }
 
 // NewMetricsRepository creates a new SQLiteMetricsRepository
-func NewMetricsRepository(db *sql.DB) *SQLiteMetricsRepository {
-	return &SQLiteMetricsRepository{db: db}
+func NewMetricsRepository(db *sql.DB, driver ...string) *SQLiteMetricsRepository {
+	d := "sqlite"
+	if len(driver) > 0 && driver[0] != "" {
+		d = driver[0]
+	}
+	return &SQLiteMetricsRepository{db: db, driver: d}
 }
 
 func (r *SQLiteMetricsRepository) GetDashboardMetrics(ctx context.Context) (*DashboardMetrics, error) {
@@ -103,14 +108,22 @@ func (r *SQLiteMetricsRepository) GetDashboardMetrics(ctx context.Context) (*Das
 		metrics.SuccessRate = float64(metrics.SucceededRuns) / float64(completedRuns) * 100.0
 	}
 
-	// 4. Average duration in seconds
-	var avgDuration sql.NullFloat64
-	durationQuery := `SELECT AVG(CAST((strftime('%s', finished_at) - strftime('%s', started_at)) AS REAL)) 
-	                  FROM pipeline_runs 
-	                  WHERE finished_at IS NOT NULL AND started_at IS NOT NULL`
-	_ = r.db.QueryRowContext(ctx, durationQuery).Scan(&avgDuration)
-	if avgDuration.Valid && avgDuration.Float64 > 0 {
-		metrics.AvgDurationSeconds = avgDuration.Float64
+	// 4. Average duration in seconds (computed in Go for multi-database cross-compatibility)
+	durationRows, err := r.db.QueryContext(ctx, "SELECT started_at, finished_at FROM pipeline_runs WHERE finished_at IS NOT NULL AND started_at IS NOT NULL")
+	if err == nil {
+		var totalSec float64
+		var count int
+		for durationRows.Next() {
+			var s, f time.Time
+			if err := durationRows.Scan(&s, &f); err == nil && !f.Before(s) {
+				totalSec += f.Sub(s).Seconds()
+				count++
+			}
+		}
+		durationRows.Close()
+		if count > 0 {
+			metrics.AvgDurationSeconds = totalSec / float64(count)
+		}
 	}
 
 	// 5. Recent runs with project and pipeline names

@@ -1,41 +1,97 @@
-# compiled output
-/frontend/dist
-/data
-/backend/data
+# ==========================================
+# Backend Build Outputs & Binaries
+# ==========================================
+/bin/
+bin/
+/backend/bin/
+backend/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+platform
+platform-*
+dashboard
+backend/platform*
+backend/dashboard*
+
+# ==========================================
+# Database & Runtime Data Files
+# ==========================================
+/data/
+data/
+/backend/data/
+backend/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ==========================================
+# Frontend Build Outputs & Caches
+# ==========================================
+/frontend/dist/
+frontend/dist/
+/dist/
+dist/
+/frontend/build/
+frontend/build/
+/build/
+build/
+.vite/
+frontend/.vite/
+.eslintcache
+frontend/.eslintcache
 /.vitest
 /coverage
+coverage/
+/storybook-static/
+storybook-static/
+frontend/storybook-static/
 /cmd/dashboard/kodata/
-/storybook-static
+backend/cmd/dashboard/kodata/
+stats.html
+stats.json
+
+# ==========================================
+# Dependencies & Package Management
+# ==========================================
+node_modules/
+frontend/node_modules/
+/vendor/
+/node-*
+.npmrc
+*.tgz
+
+# ==========================================
+# Logs
+# ==========================================
+*.log
+debug-storybook.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================================
+# IDE & System Files
+# ==========================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
 /tmp
 main
 
-# config
-.npmrc
-
-# dependencies
-node_modules/
-/vendor
-/node-*
-
-# misc
-debug-storybook.log
-npm-debug.log
-yarn-error.log
-stats.html
-stats.json
-.vscode/
-
-# System Files
-.DS_Store
-Thumbs.db
-
-/dashboard
-
-# e2e
+# ==========================================
+# E2E Testing Outputs
+# ==========================================
 packages/e2e/cypress/downloads
 packages/e2e/cypress/results
 packages/e2e/cypress/screenshots
 packages/e2e/cypress/videos
-
-# local package builds
-*.tgz

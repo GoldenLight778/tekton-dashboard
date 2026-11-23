@@ -36,12 +36,17 @@ type CredentialRepository interface {
 
 // SQLiteCredentialRepository implements CredentialRepository
 type SQLiteCredentialRepository struct {
-	db *sql.DB
+	db     *sql.DB
+	driver string
 }
 
 // NewCredentialRepository creates a new SQLiteCredentialRepository
-func NewCredentialRepository(db *sql.DB) *SQLiteCredentialRepository {
-	return &SQLiteCredentialRepository{db: db}
+func NewCredentialRepository(db *sql.DB, driver ...string) *SQLiteCredentialRepository {
+	d := "sqlite"
+	if len(driver) > 0 && driver[0] != "" {
+		d = driver[0]
+	}
+	return &SQLiteCredentialRepository{db: db, driver: d}
 }
 
 func (r *SQLiteCredentialRepository) Create(ctx context.Context, c *Credential) error {
@@ -53,7 +58,7 @@ func (r *SQLiteCredentialRepository) Create(ctx context.Context, c *Credential) 
 	}
 	c.UpdatedAt = now
 
-	_, err := r.db.ExecContext(ctx, query, c.ID, c.ProjectID, c.Name, c.Type, c.EncryptedData, c.CreatedAt, c.UpdatedAt)
+	_, err := r.db.ExecContext(ctx, Rebind(r.driver, query), c.ID, c.ProjectID, c.Name, c.Type, c.EncryptedData, c.CreatedAt, c.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create credential: %w", err)
 	}
@@ -62,7 +67,7 @@ func (r *SQLiteCredentialRepository) Create(ctx context.Context, c *Credential) 
 
 func (r *SQLiteCredentialRepository) GetByID(ctx context.Context, id string) (*Credential, error) {
 	query := `SELECT id, project_id, name, type, encrypted_data, created_at, updated_at FROM credentials WHERE id = ?`
-	row := r.db.QueryRowContext(ctx, query, id)
+	row := r.db.QueryRowContext(ctx, Rebind(r.driver, query), id)
 
 	var c Credential
 	err := row.Scan(&c.ID, &c.ProjectID, &c.Name, &c.Type, &c.EncryptedData, &c.CreatedAt, &c.UpdatedAt)
@@ -77,7 +82,7 @@ func (r *SQLiteCredentialRepository) GetByID(ctx context.Context, id string) (*C
 
 func (r *SQLiteCredentialRepository) GetByProjectAndName(ctx context.Context, projectID, name string) (*Credential, error) {
 	query := `SELECT id, project_id, name, type, encrypted_data, created_at, updated_at FROM credentials WHERE project_id = ? AND name = ?`
-	row := r.db.QueryRowContext(ctx, query, projectID, name)
+	row := r.db.QueryRowContext(ctx, Rebind(r.driver, query), projectID, name)
 
 	var c Credential
 	err := row.Scan(&c.ID, &c.ProjectID, &c.Name, &c.Type, &c.EncryptedData, &c.CreatedAt, &c.UpdatedAt)
@@ -93,7 +98,7 @@ func (r *SQLiteCredentialRepository) GetByProjectAndName(ctx context.Context, pr
 func (r *SQLiteCredentialRepository) ListByProject(ctx context.Context, projectID string) ([]Credential, error) {
 	query := `SELECT id, project_id, name, type, encrypted_data, created_at, updated_at 
 	          FROM credentials WHERE project_id = ? ORDER BY created_at DESC`
-	rows, err := r.db.QueryContext(ctx, query, projectID)
+	rows, err := r.db.QueryContext(ctx, Rebind(r.driver, query), projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list credentials: %w", err)
 	}
@@ -112,7 +117,7 @@ func (r *SQLiteCredentialRepository) ListByProject(ctx context.Context, projectI
 
 func (r *SQLiteCredentialRepository) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM credentials WHERE id = ?`
-	res, err := r.db.ExecContext(ctx, query, id)
+	res, err := r.db.ExecContext(ctx, Rebind(r.driver, query), id)
 	if err != nil {
 		return fmt.Errorf("failed to delete credential: %w", err)
 	}

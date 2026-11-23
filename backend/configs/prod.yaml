@@ -1,0 +1,21 @@
+# Production Environment Configuration
+app:
+  env: prod
+  addr: ":8080"
+  log_level: warn
+  jwt_secret: ${PLATFORM_JWT_SECRET:-prod-jwt-secret-override-via-env}
+  secret_key: ${PLATFORM_SECRET_KEY:-0123456789abcdef0123456789abcdef}
+
+database:
+  driver: ${PLATFORM_DB_DRIVER:-postgres} # postgres | mysql | sqlite
+  dsn: ${PLATFORM_DB_DSN:-postgres://devops:password@localhost:5432/devops_prod?sslmode=disable}
+  max_open_conns: 100
+  max_idle_conns: 20
+  conn_max_lifetime: 15m
+
+kubernetes:
+  mode: ${PLATFORM_K8S_MODE:-in-cluster} # in-cluster | kubeconfig | minikube | fake
+  kubeconfig: ${PLATFORM_KUBECONFIG:-}
+  context: ""
+  namespace: ${PLATFORM_K8S_NAMESPACE:-tekton-pipelines}
+  insecure: false
