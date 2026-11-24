@@ -81,6 +81,10 @@ export default defineConfig(({ mode }) => ({
       '/api': {
         ...proxyConfig,
         ws: true
+      },
+      '/apis': {
+        ...proxyConfig,
+        ws: true
       }
     },
     strictPort: mode !== 'test',

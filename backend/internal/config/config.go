@@ -29,10 +29,11 @@ type AppConfig struct {
 	SecretKey string `yaml:"secret_key"`
 }
 
-// DatabaseConfig holds DB driver, DSN, and connection pool settings
+// DatabaseConfig holds DB driver, datasource connection string, and connection pool settings
 type DatabaseConfig struct {
 	Driver          string        `yaml:"driver"`
-	DSN             string        `yaml:"dsn"`
+	Datasource      string        `yaml:"datasource"`
+	DSN             string        `yaml:"dsn"` // alias for datasource
 	MaxOpenConns    int           `yaml:"max_open_conns"`
 	MaxIdleConns    int           `yaml:"max_idle_conns"`
 	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
@@ -56,6 +57,7 @@ type Config struct {
 	// Flat fields for backward compatibility with existing server code
 	Addr       string
 	DBPath     string
+	Datasource string
 	JWTSecret  string
 	SecretKey  string
 	Kubeconfig string
@@ -127,6 +129,14 @@ func LoadWithFile(envName, customFilePath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config from %s: %w", configOrigin, err)
 	}
 
+	// Ensure Database.Datasource and Database.DSN are in sync
+	if cfg.Database.Datasource == "" && cfg.Database.DSN != "" {
+		cfg.Database.Datasource = cfg.Database.DSN
+	}
+	if cfg.Database.DSN == "" && cfg.Database.Datasource != "" {
+		cfg.Database.DSN = cfg.Database.Datasource
+	}
+
 	// Environment variable overrides (higher priority than file)
 	applyEnvOverrides(&cfg)
 
@@ -135,7 +145,8 @@ func LoadWithFile(envName, customFilePath string) (*Config, error) {
 	cfg.LogLevel = cfg.App.LogLevel
 	cfg.JWTSecret = cfg.App.JWTSecret
 	cfg.SecretKey = cfg.App.SecretKey
-	cfg.DBPath = cfg.Database.DSN
+	cfg.Datasource = cfg.Database.Datasource
+	cfg.DBPath = cfg.Database.Datasource
 	cfg.Kubeconfig = cfg.Kubernetes.Kubeconfig
 	cfg.Env = cfg.App.Env
 	if cfg.Env == "" {
@@ -147,9 +158,14 @@ func LoadWithFile(envName, customFilePath string) (*Config, error) {
 
 // ToDBConfig converts Config's database section into repository.DBConfig
 func (c *Config) ToDBConfig() repository.DBConfig {
+	ds := c.Database.Datasource
+	if ds == "" {
+		ds = c.Database.DSN
+	}
 	return repository.DBConfig{
 		Driver:          c.Database.Driver,
-		DSN:             c.Database.DSN,
+		Datasource:      ds,
+		DSN:             ds,
 		MaxOpenConns:    c.Database.MaxOpenConns,
 		MaxIdleConns:    c.Database.MaxIdleConns,
 		ConnMaxLifetime: c.Database.ConnMaxLifetime,
@@ -192,7 +208,11 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("PLATFORM_DB_DRIVER"); v != "" {
 		cfg.Database.Driver = v
 	}
-	if v := os.Getenv("PLATFORM_DB_DSN"); v != "" {
+	if v := os.Getenv("PLATFORM_DATASOURCE"); v != "" {
+		cfg.Database.Datasource = v
+		cfg.Database.DSN = v
+	} else if v := os.Getenv("PLATFORM_DB_DSN"); v != "" {
+		cfg.Database.Datasource = v
 		cfg.Database.DSN = v
 	}
 	if v := os.Getenv("PLATFORM_K8S_MODE"); v != "" {

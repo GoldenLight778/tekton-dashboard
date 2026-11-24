@@ -8,7 +8,7 @@ app:
 
 database:
   driver: sqlite
-  dsn: ":memory:"
+  datasource: ":memory:"
   max_open_conns: 1
   max_idle_conns: 1
   conn_max_lifetime: 0s

@@ -1,253 +1,183 @@
-<!--
+# DevOps 平台安装与部署手册 (Installation & Deployment)
+
+DevOps 平台支持多种灵活的部署形态：从**单二进制极简部署**、**Docker 单容器开箱即用运行**，到**Kubernetes 生产级集群托管**。本文档详细介绍不同形态下的部署步骤与配置规范。
+
 ---
-linkTitle: "Install"
-weight: 2
+
+## 目录
+- [1. 部署形态选型建议](#1-部署形态选型建议)
+- [2. 核心运行环境变量](#2-核心运行环境变量)
+- [3. 部署方式一：单可执行文件直接部署 (裸机 / VM)](#3-部署方式一单可执行文件直接部署-裸机--vm)
+- [4. 部署方式二：Docker 单容器部署 (推荐中小型团队)](#4-部署方式二docker-单容器部署-推荐中小型团队)
+- [5. 部署方式三：Kubernetes 集群生产级部署](#5-部署方式三kubernetes-集群生产级部署)
+- [6. 服务验证与初始化配置](#6-服务验证与初始化配置)
+
 ---
--->
 
-# Installing Tekton Dashboard
+## 1. 部署形态选型建议
 
-This guide explains how to install Tekton Dashboard. It covers the following topics:
+| 部署形态 | 适用场景 | 架构特征 | 维护复杂度 |
+|:---|:---|:---|:---|
+| **单二进制运行** | 本地演示、开发测试、个人服务器、离线环境 | 纯 Go 静态二进制文件 + 静态资源目录，内置 SQLite 数据库，零外部依赖 | 极低 |
+| **Docker 单容器** | 中小型企业内部 DevOps 平台、私有云轻量交付 | 单镜像包含前后端产物，数据目录挂载卷持久化，支持外挂 MySQL/Postgres | 低 |
+| **Kubernetes 集群** | 企业级高可用生产环境、深度对接云原生流水线 | Deployment + Service + Ingress，挂载 PVC，对接真实 Tekton Pipelines/Triggers | 中等 |
 
-- [Installing Tekton Dashboard](#installing-tekton-dashboard)
-  - [Before you begin](#before-you-begin)
-  - [Pre-requisites](#pre-requisites)
-    - [Supported Tekton Pipelines and Tekton Triggers versions](#supported-tekton-pipelines-and-tekton-triggers-versions)
-  - [Installing Tekton Dashboard on Kubernetes](#installing-tekton-dashboard-on-kubernetes)
-  - [Installing with the installer script](#installing-with-the-installer-script)
-  - [Accessing the Dashboard](#accessing-the-dashboard)
-    - [Using kubectl proxy](#using-kubectl-proxy)
-    - [Using kubectl port-forward](#using-kubectl-port-forward)
-    - [Using an Ingress rule](#using-an-ingress-rule)
-    - [Access control](#access-control)
-  - [Uninstalling the Dashboard on Kubernetes](#uninstalling-the-dashboard-on-kubernetes)
-  - [Next steps](#next-steps)
+---
 
-## Before you begin
+## 2. 核心运行环境变量
 
-Choose the version of Tekton Dashboard you want to install. You have the following options:
+服务启动时支持通过环境变量注入或覆盖配置：
 
-- **[Official](https://github.com/tektoncd/dashboard/releases)** - install this unless you have a specific reason to go for a different release.
-- **[Nightly](https://github.com/tektoncd/dashboard/blob/main/releases.md#nightly-builds)** - may contain bugs, install at your own risk.
-- **[`HEAD`]** - this is the bleeding edge. It contains unreleased code that may result in unpredictable behavior. To get started, see the [development guide](../DEVELOPMENT.md) instead of this page.
+| 环境变量 | 默认值 | 说明 | 生产建议 |
+|:---|:---|:---|:---|
+| `PLATFORM_ENV` | `prod` | 运行环境标识 (`dev` / `test` / `prod`) | 生产环境设为 `prod` |
+| `PLATFORM_ADDR` | `:8080` | HTTP 服务监听地址与端口 | 按需调整，如 `:80` 或 `:8080` |
+| `PLATFORM_LOG_LEVEL` | `info` | 日志输出级别 (`debug` / `info` / `warn` / `error`) | 生产环境推荐 `info` |
+| `PLATFORM_DB_DRIVER` | `sqlite` | 数据库驱动 (`sqlite` / `mysql` / `postgres`) | 可保持 `sqlite` 或切换为外部数据库 |
+| `PLATFORM_DATASOURCE` | `./data/platform.db` | 数据库连接数据源（文件路径或连接串，兼容 `PLATFORM_DB_DSN`） | SQLite 必须指向持久化卷路径 |
+| `PLATFORM_JWT_SECRET` | 开发默认值 | JWT 登录凭据签名密钥 | **生产环境必须通过安全随机密钥覆盖** |
+| `PLATFORM_SECRET_KEY` | 开发默认值 | 凭据管理 AES-256-GCM 32 字节加密主密钥 | **生产环境必须显式注入独立保密密钥** |
+| `PLATFORM_K8S_MODE` | `fake` | Kubernetes 运行模式 (`minikube` / `kubeconfig` / `in-cluster` / `fake`) | 部署在 K8s 内部时设为 `in-cluster` |
+| `PLATFORM_KUBECONFIG` | 空 | K8s Kubeconfig 文件路径（当 mode 为 `kubeconfig` 时生效） | 按需挂载文件路径 |
+| `PLATFORM_K8S_NAMESPACE` | `default` | 默认调度与监听的 Kubernetes 命名空间 | 推荐 `tekton-pipelines` 或专有业务空间 |
 
-## Pre-requisites
+---
 
-In order to install the Tekton Dashboard, please make sure the following requirements are met:
-- You must have a Kubernetes cluster running version 1.34.0 or later. Tekton Pipelines or other projects may require a newer version. The Dashboard may work on older Kubernetes versions but this is untested and not officially supported.
+## 3. 部署方式一：单可执行文件直接部署 (裸机 / VM)
 
-  If you don't already have a cluster, you can create one for testing with `kind`.
-  [Install `kind`](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) and create a cluster by running [`kind create cluster`](https://kind.sigs.k8s.io/docs/user/quick-start/#creating-a-cluster). This
-  will create a cluster running locally, with RBAC enabled and your user granted
-  the `cluster-admin` role.
+本方式适合在 Linux 服务器或 Windows 主机上直接托管运行。
 
-- Tekton Pipelines must be installed in the cluster. See [Installing Tekton Pipelines](https://github.com/tektoncd/pipeline/blob/main/docs/install.md).
-- Optionally, install Tekton Triggers. See [Installing Tekton Triggers](https://github.com/tektoncd/triggers/blob/main/docs/install.md).
-
-### Supported Tekton Pipelines and Tekton Triggers versions
-
-Each Tekton Dashboard release is tested against specific Tekton Pipelines and Tekton Triggers versions. See the Tekton Dashboard release notes for details of the supported versions.
-
-## Installing Tekton Dashboard on Kubernetes
-
-To install Tekton Dashboard on a Kubernetes cluster:
-
-1. Run the following command to install Tekton Dashboard:
-
-   ```bash
-   kubectl apply --filename https://infra.tekton.dev/tekton-releases/dashboard/latest/release.yaml
-   ```
-
-   This will install the Dashboard in read-only mode by default.
-
-   Previous versions are available at `previous/$VERSION_NUMBER/*.yaml`, e.g.
-   https://infra.tekton.dev/tekton-releases/dashboard/previous/v0.32.0/release.yaml
-
-   To install in read/write mode, use release-full.yaml.
-
-   v0.31.0 and earlier used a different naming scheme for the release manifests:
-
-   | Mode | Current | v0.31.0 and earlier |
-   |------|---------|---------------------|
-   | read-only | release.yaml | tekton-dashboard-release-readonly.yaml |
-   | read/write | release-full.yaml | tekton-dashboard-release.yaml |
-
-1. Monitor the installation using the following command until all components show a `Running` status:
-
-   ```bash
-   kubectl get pods --namespace tekton-pipelines --watch
-   ```
-
-   **Note:** Hit CTRL+C to stop monitoring.
-
-Congratulations! You have successfully installed Tekton Dashboard on your Kubernetes cluster.
-
-## Installing with the installer script
-
-`v0.8.0` and later releases provide an installer script to simplify deploying the Tekton Dashboard with custom options.
-
-You can refer to the dev docs for more info on [how to use the installer](./dev/installer.md).
-
-For example:
-
-- to install the latest release in read/write mode:
-
-  ```bash
-  curl -sL https://raw.githubusercontent.com/tektoncd/dashboard/main/scripts/release-installer | \
-    bash -s -- install latest --read-write
-  ```
-
-- to install with access to a subset of namespaces instead of full cluster access:
-
-  ```bash
-  curl -sL https://raw.githubusercontent.com/tektoncd/dashboard/main/scripts/release-installer | \
-    bash -s -- install latest --read-write --tenant-namespaces tenant-namespace1,tenant-namespace2
-  ```
-
-  This will add the `--namespaces` arg to the Dashboard deployment and create RoleBindings in each of the specified namespaces with appropriate roles granted to the Dashboard ServiceAccount.
-
-- to install with support for loading logs from an external source:
-
-  ```bash
-  curl -sL https://raw.githubusercontent.com/tektoncd/dashboard/main/scripts/release-installer | \
-    bash -s -- install latest --read-write --external-logs <logs-provider-url>
-  ```
-
-  See [Tekton Dashboard walk-through - Logs persistence](./walkthrough/walkthrough-logs.md) for details
-
-## Accessing the Dashboard
-
-By default, the Dashboard is not exposed outside the cluster.
-
-There are several solutions described below for accessing the Dashboard UI depending on your setup.
-
-### Using kubectl proxy
-
-The Dashboard can be accessed through its ClusterIP Service by running `kubectl proxy`.
-
-Assuming `tekton-pipelines` is the install namespace for the Dashboard, run the following command:
-
+### 3.1 编译产物准备
+在编译机上完成前后端构建（可参阅 [原生编译指南 (docs/dev/native-build.md)](./dev/native-build.md)）：
 ```bash
-kubectl proxy
+# 1. 编译前端
+cd frontend && npm ci && npm run build && cd ..
+
+# 2. 静态编译 Linux amd64 二进制 (CGO_ENABLED=0 无动态依赖)
+cd backend
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags prod -ldflags "-s -w -X main.version=0.1.0" -o bin/platform-linux-amd64 ./cmd/platform
+cd ..
 ```
 
-Browse http://localhost:8001/api/v1/namespaces/tekton-pipelines/services/tekton-dashboard:http/proxy/ to access your Dashboard.
-
-### Using kubectl port-forward
-
-An alternative way to access the Dashboard is using `kubectl port-forward`.
-
-Assuming `tekton-pipelines` is the install namespace for the Dashboard, run the following command:
-
-```bash
-kubectl --namespace tekton-pipelines port-forward svc/tekton-dashboard 9097:9097
+### 3.2 组织生产部署目录
+将编译产物拷贝至目标服务器目录（例如 `/opt/devops-platform`）：
+```
+/opt/devops-platform/
+├── platform                # 重命名后的二进制文件
+├── dist/                   # 前端编译产物 (即 frontend/dist 拷贝过来)
+└── data/                   # 数据持久化目录 (自动生成 platform.db)
 ```
 
-Browse http://localhost:9097 to access your Dashboard.
+### 3.3 配置 Systemd 系统守护进程 (Linux)
+创建服务文件 `/etc/systemd/system/devops-platform.service`：
 
-### Using an Ingress rule
+```ini
+[Unit]
+Description=Tekton DevOps Platform Service
+After=network.target
 
-A more advanced solution is to expose the Dashboard through an `Ingress` rule.
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/devops-platform
+ExecStart=/opt/devops-platform/platform
+Restart=always
+RestartSec=5
+Environment=PLATFORM_ENV=prod
+Environment=PLATFORM_ADDR=:8080
+Environment=PLATFORM_DB_PATH=/opt/devops-platform/data/platform.db
+Environment=PLATFORM_JWT_SECRET=c8f1e94b238a924b11f62d847c0e819a
+Environment=PLATFORM_SECRET_KEY=0123456789abcdef0123456789abcdef
 
-This way the Dashboard can be accessed as a regular website without requiring `kubectl`.
-
-Assuming you have an [ingress controller](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/) up and running in your cluster, and that `tekton-pipelines` is the install namespace for the Dashboard, run the following command to create the `Ingress` resource:
-
-```bash
-# replace DASHBOARD_URL with the hostname you want for your dashboard
-# the hostname should be setup to point to your ingress controller
-DASHBOARD_URL=dashboard.domain.tld
-kubectl apply -n tekton-pipelines -f - <<EOF
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: tekton-dashboard
-  namespace: tekton-pipelines
-spec:
-  rules:
-  - host: $DASHBOARD_URL
-    http:
-      paths:
-      - pathType: ImplementationSpecific
-        backend:
-          service:
-            name: tekton-dashboard
-            port:
-              number: 9097
-EOF
+[Install]
+WantedBy=multi-user.target
 ```
 
-You can now access the Dashboard UI at `http(s)://dashboard.domain.tld` in your browser (assuming the host configured in the ingress is `dashboard.domain.tld`)
+启动并设置开机自启：
+```bash
+systemctl daemon-reload
+systemctl enable --now devops-platform
+systemctl status devops-platform
+```
 
-Notes:
-- The exact `Ingress` resource definition may vary a little depending on the ingress controller installed in the cluster. Some specific annotations may be required for the ingress controller to process the `Ingress` resource correctly
-- If you don't have access to a domain you can use the freely available [`nip.io`](https://nip.io/) service
+---
 
-An example using the NGINX ingress controller to expose the Dashboard on a specific path instead of at the root of the domain:
+## 4. 部署方式二：Docker 单容器部署 (推荐中小型团队)
 
+通过 Docker 单镜像打包前端静态资源与 Go 二进制程序，直接以容器形态提供服务。
+
+### 4.1 构建 Docker 镜像
+基于项目多阶段 Dockerfile 构建极简镜像：
+```bash
+docker build -t devops-platform:latest -f deploy/Dockerfile .
+```
+
+### 4.2 运行 Docker 容器
+```bash
+# 确保宿主机持久化目录存在
+mkdir -p /opt/devops-data
+
+# 启动容器并挂载数据卷
+docker run -d \
+  --name devops-platform \
+  -p 8080:8080 \
+  -v /opt/devops-data:/data \
+  -e PLATFORM_ENV=prod \
+  -e PLATFORM_ADDR=:8080 \
+  -e PLATFORM_DATASOURCE=/data/platform.db \
+  -e PLATFORM_JWT_SECRET=your-random-jwt-secret-string \
+  -e PLATFORM_SECRET_KEY=your-32-byte-aes-encryption-key-00 \
+  --restart always \
+  devops-platform:latest
+```
+
+---
+
+## 5. 部署方式三：Kubernetes 集群生产级部署
+
+将 DevOps 平台部署至已有 Kubernetes 集群，深度协同集群内的 Tekton Pipelines 与 Triggers。
+
+### 5.1 前置条件
+- Kubernetes 集群 ≥ 1.24
+- 集群已安装 Tekton Pipelines（参考官方：`kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml`）
+- 目标命名空间（默认 `tekton-pipelines`）
+
+### 5.2 部署平台清单文件
+```bash
+# 应用命名空间、ServiceAccount、RBAC 与 Deployment 清单
+kubectl apply -k deploy/k8s
+```
+
+### 5.3 生产级存储卷配置 (PVC)
+由于平台采用内嵌 SQLite 或单副本文件数据库，在 Kubernetes 中部署时需配置 `ReadWriteOnce` 的 PersistentVolumeClaim（PVC）挂载至 `/data`：
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: v1
+kind: PersistentVolumeClaim
 metadata:
-  name: tekton-dashboard
+  name: devops-platform-pvc
   namespace: tekton-pipelines
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
-  rules:
-  - host: domain.tld
-    http:
-      paths:
-      - path: /tekton(/|$)(.*)
-        backend:
-          service:
-            name: tekton-dashboard
-            port:
-              number: 9097
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
 ```
 
-You can then access the Dashboard UI at `http(s)://domain.tld/tekton/`
-
-### Access control
-
-The Dashboard does not provide its own authentication or authorization, however it will pass on any authentication headers provided to it by a proxy deployed in front of the Dashboard. These are then handled by the Kubernetes API server allowing for full access control via [Kubernetes RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/). In case of forbidden access the Dashboard will display corresponding error notifications.
-
-See the walk-throughs for an example of [enabling authentication using oauth2-proxy](./walkthrough/walkthrough-oauth2-proxy.md).
-
-By default the Dashboard accesses resources and performs actions in the cluster using the permissions granted to its own ServiceAccount (i.e. the `tekton-dashboard` ServiceAccount in the `tekton-pipelines` namespace). If you wish to have the Dashboard perform actions on behalf of the authenticated user or some other ServiceAccount this can be achieved via [user impersonation](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#user-impersonation). This is known to work with a number of popular solutions including oauth2-proxy, Keycloak, OpenUnison, Traefik, Istio's EnvoyFilter, and more.
-
-Typically when configuring impersonation you would have the proxy forward its ServiceAccount token in the `Authorization` header, and details of the user and groups in the `Impersonate-User` and `Impersonate-Group` headers respectively. See the docs of your chosen solution for details.
-
-When using a reverse proxy, with impersonation headers or the user's account, you should remove the Dashboard's privileges to better maintain a "least privileged" approach.  This will make it less likely that the Dashboard's `ServiceAccount` will be abused:
-
-
-```
-kubectl delete clusterrolebinding -l rbac.dashboard.tekton.dev/subject=tekton-dashboard
-kubectl delete rolebinding -l rbac.dashboard.tekton.dev/subject=tekton-dashboard -n tekton-pipelines
-```
-
-If you're using one of these proxies to provide authentication but still want to use the Dashboard's ServiceAccount to access the Kubernetes APIs you may need to modify the proxy config to prevent it from sending the `Authorization` header on upstream requests to the Dashboard. Some examples of relevant config:
-- oauth2-proxy: add the `--pass-authorization-header=false` command line argument or its equivalent to your config https://oauth2-proxy.github.io/oauth2-proxy/docs/configuration/overview#command-line-options
-- Istio EnvoyFilter: the external authentication service should return a custom header `x-envoy-auth-headers-to-remove: Authorization` https://www.envoyproxy.io/docs/envoy/latest/api-v3/service/auth/v3/external_auth.proto
-- Traefik: `removeHeader: true` https://doc.traefik.io/traefik/v2.0/middlewares/basicauth/#removeheader
-
-## Uninstalling the Dashboard on Kubernetes
-
-The Dashboard can be uninstalled by running the following command:
-
-```bash
-kubectl delete --filename https://infra.tekton.dev/tekton-releases/dashboard/latest/release.yaml
-```
-
-The above command assumes that the current latest version was installed, refer to [Installing Tekton Dashboard on Kubernetes](#installing-tekton-dashboard-on-kubernetes) to find the correct `--filename` argument if another version was installed.
-
-## Next steps
-
-To get started with Tekton Dashboard, see the [tutorial](./tutorial.md).
-
-To add more functionality to your Tekton Dashboard, see the [Tekton Dashboard extensions](./extensions.md)
+### 5.4 暴露服务 (Ingress 或 Port-Forward)
+- **临时端口转发体验**：
+  ```bash
+  kubectl port-forward svc/tekton-dashboard -n tekton-pipelines 8080:8080
+  ```
+- **通过 Ingress 域名对外提供服务**：
+  配置相应的 Ingress 规则，将请求路由至服务端口 `8080`。
 
 ---
 
-Except as otherwise noted, the content of this page is licensed under the [Creative Commons Attribution 4.0 License](https://creativecommons.org/licenses/by/4.0/). Code samples are licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).
+## 6. 服务验证与初始化配置
+
+1. 打开浏览器访问服务地址：`http://<server-ip>:8080/`
+2. 使用系统默认初始化管理员账号登录：
+   - **用户名**：`admin`
+   - **初始密码**：`admin123`
+3. 登录成功后即可创建团队项目空间、定义流水线 DSL、录入凭据并进行日常构建与监控！

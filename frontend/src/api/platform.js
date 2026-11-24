@@ -79,10 +79,11 @@ async function request(endpoint, options = {}) {
 
     return data?.data !== undefined ? data.data : data;
   } catch (err) {
-    // Graceful fallback to mock data if backend connection is refused/offline
-    const fallbackMock = handleMockRequest(fullUri, options);
-    if (fallbackMock !== undefined) {
-      return fallbackMock;
+    if (isMockEnabled()) {
+      const fallbackMock = handleMockRequest(fullUri, options);
+      if (fallbackMock !== undefined) {
+        return fallbackMock;
+      }
     }
     throw err;
   }

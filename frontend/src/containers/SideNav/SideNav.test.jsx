@@ -35,39 +35,45 @@ const mockExtensions = [
 ];
 
 it('SideNav renders only when expanded', () => {
-  const { queryByText } = renderWithRouter(<SideNav expanded />);
-  expect(queryByText(/Tekton resources/)).toBeTruthy();
+  const { queryAllByText } = renderWithRouter(<SideNav expanded />);
+  expect(
+    queryAllByText(/Tekton resources|工作台|流水线中心/).length
+  ).toBeGreaterThan(0);
 });
 
 it('SideNav renders nothing when collapsed', () => {
-  const { queryByText } = renderWithRouter(<SideNav />);
-  expect(queryByText(/Tekton resources/)).toBeFalsy();
+  const { queryAllByText } = renderWithRouter(<SideNav />);
+  expect(queryAllByText(/Tekton resources|工作台|流水线中心/).length).toBe(0);
 });
 
 it('SideNav renders with extensions', () => {
   vi.spyOn(extensionsAPI, 'useExtensions').mockImplementation(() => ({
     data: mockExtensions
   }));
-  const { queryByText } = renderWithRouter(<SideNav expanded />);
-  expect(queryByText('Pipelines')).toBeTruthy();
-  expect(queryByText('Tasks')).toBeTruthy();
+  const { queryAllByText, queryByText } = renderWithRouter(
+    <SideNav expanded />
+  );
+  expect(queryAllByText(/Pipelines|流水线/).length).toBeGreaterThan(0);
+  expect(queryAllByText(/Tasks|任务/).length).toBeGreaterThan(0);
   expect(queryByText(/dashboard_crd_extension/i)).toBeTruthy();
 });
 
 it('SideNav renders with triggers', async () => {
   vi.spyOn(API, 'useIsTriggersInstalled').mockImplementation(() => true);
-  const { queryByText } = renderWithRouter(<SideNav expanded />);
-  await waitFor(() => queryByText(/about/i));
-  expect(queryByText('Pipelines')).toBeTruthy();
-  expect(queryByText('Tasks')).toBeTruthy();
-  await waitFor(() => queryByText('EventListeners'));
-  expect(queryByText('TriggerTemplates')).toBeTruthy();
-  expect(queryByText('TriggerBindings')).toBeTruthy();
+  const { queryAllByText, queryByText } = renderWithRouter(
+    <SideNav expanded />
+  );
+  await waitFor(() => queryByText(/about|关于/i));
+  expect(queryAllByText(/Pipelines|流水线/).length).toBeGreaterThan(0);
+  expect(queryAllByText(/Tasks|任务/).length).toBeGreaterThan(0);
+  await waitFor(() => queryByText(/EventListeners|事件监听/));
+  expect(queryByText(/TriggerTemplates|触发模板/)).toBeTruthy();
+  expect(queryAllByText(/TriggerBindings|触发绑定/).length).toBeGreaterThan(0);
 });
 
 it('SideNav renders import in the default read-write mode', async () => {
   const { queryByText } = renderWithRouter(<SideNav expanded />);
-  await waitFor(() => queryByText(/Import/i));
+  await waitFor(() => queryByText(/Import|导入/i));
 });
 
 it('SideNav does not render import in read-only mode', async () => {

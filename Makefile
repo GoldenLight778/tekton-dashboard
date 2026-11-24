@@ -1,4 +1,4 @@
-.PHONY: help dev-frontend build-frontend test-frontend lint-frontend run-backend build-backend build-backend-dev build-backend-prod build-backend-test build-backend-windows build-backend-linux build-backend-all test-backend
+.PHONY: help dev-frontend dev-frontend-mock build-frontend test-frontend lint-frontend run-backend build-backend build-backend-dev build-backend-prod build-backend-test build-backend-windows build-backend-linux build-backend-all test-backend
 
 ENV ?= dev
 VERSION ?= 0.1.0-alpha
@@ -11,7 +11,8 @@ endif
 
 help:
 	@echo "DevOps Platform Development Commands:"
-	@echo "  make dev-frontend           - Start React Vite frontend (Mock mode)"
+	@echo "  make dev-frontend           - Start React Vite frontend (connected to backend proxy)"
+	@echo "  make dev-frontend-mock      - Start React Vite frontend (standalone Mock mode)"
 	@echo "  make build-frontend         - Build React Vite frontend to frontend/dist"
 	@echo "  make test-frontend          - Run frontend unit tests"
 	@echo "  make lint-frontend          - Lint frontend code"
@@ -27,6 +28,9 @@ help:
 
 dev-frontend:
 	npm --prefix frontend run dev
+
+dev-frontend-mock:
+	npm --prefix frontend run dev:mock
 
 build-frontend:
 	npm --prefix frontend run build

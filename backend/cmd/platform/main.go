@@ -24,7 +24,8 @@ func main() {
 	configFlag := flag.String("config", "", "Path to custom YAML configuration file")
 	portFlag := flag.String("port", "", "Override HTTP listen port (e.g. 8080 or :8080)")
 	dbDriverFlag := flag.String("db-driver", "", "Override database driver (sqlite, mysql, postgres)")
-	dbDSNFlag := flag.String("db-dsn", "", "Override database connection DSN")
+	dbDatasourceFlag := flag.String("datasource", "", "Override database connection datasource")
+	dbDSNFlag := flag.String("db-dsn", "", "Alias for -datasource")
 	k8sModeFlag := flag.String("k8s-mode", "", "Override Kubernetes mode (minikube, kubeconfig, in-cluster, fake)")
 	versionFlag := flag.Bool("version", false, "Print version information and exit")
 	flag.Parse()
@@ -79,8 +80,15 @@ func main() {
 	if *dbDriverFlag != "" {
 		cfg.Database.Driver = *dbDriverFlag
 	}
-	if *dbDSNFlag != "" {
+	if *dbDatasourceFlag != "" {
+		cfg.Database.Datasource = *dbDatasourceFlag
+		cfg.Database.DSN = *dbDatasourceFlag
+		cfg.Datasource = *dbDatasourceFlag
+		cfg.DBPath = *dbDatasourceFlag
+	} else if *dbDSNFlag != "" {
+		cfg.Database.Datasource = *dbDSNFlag
 		cfg.Database.DSN = *dbDSNFlag
+		cfg.Datasource = *dbDSNFlag
 		cfg.DBPath = *dbDSNFlag
 	}
 	if *k8sModeFlag != "" {
@@ -91,6 +99,7 @@ func main() {
 		zap.String("env", cfg.App.Env),
 		zap.String("addr", cfg.App.Addr),
 		zap.String("db_driver", cfg.Database.Driver),
+		zap.String("datasource", maskDatasource(cfg.Database.Datasource)),
 		zap.String("k8s_mode", cfg.Kubernetes.Mode),
 	)
 
@@ -127,4 +136,12 @@ func main() {
 	}
 
 	logger.Info("platform stopped cleanly")
+}
+
+func maskDatasource(dsn string) string {
+	if strings.Contains(dsn, "@") {
+		parts := strings.Split(dsn, "@")
+		return "***@" + parts[len(parts)-1]
+	}
+	return dsn
 }
