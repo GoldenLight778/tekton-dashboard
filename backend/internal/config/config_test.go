@@ -36,6 +36,12 @@ func TestLoadEmbeddedDev(t *testing.T) {
 	if cfg.Database.Driver != "sqlite" {
 		t.Errorf("expected Database.Driver 'sqlite', got '%s'", cfg.Database.Driver)
 	}
+	if cfg.Database.Datasource != "./data/platform-dev.db" {
+		t.Errorf("expected Database.Datasource './data/platform-dev.db', got '%s'", cfg.Database.Datasource)
+	}
+	if cfg.Datasource != "./data/platform-dev.db" {
+		t.Errorf("expected Datasource './data/platform-dev.db', got '%s'", cfg.Datasource)
+	}
 	if cfg.Kubernetes.Mode != "minikube" {
 		t.Errorf("expected Kubernetes.Mode 'minikube', got '%s'", cfg.Kubernetes.Mode)
 	}
@@ -50,8 +56,8 @@ func TestLoadEmbeddedTest(t *testing.T) {
 	if cfg.App.Env != "test" {
 		t.Errorf("expected App.Env 'test', got '%s'", cfg.App.Env)
 	}
-	if cfg.Database.DSN != ":memory:" {
-		t.Errorf("expected Database.DSN ':memory:', got '%s'", cfg.Database.DSN)
+	if cfg.Database.Datasource != ":memory:" {
+		t.Errorf("expected Database.Datasource ':memory:', got '%s'", cfg.Database.Datasource)
 	}
 	if cfg.Kubernetes.Mode != "fake" {
 		t.Errorf("expected Kubernetes.Mode 'fake', got '%s'", cfg.Kubernetes.Mode)
@@ -70,6 +76,10 @@ func TestLoadEmbeddedProd(t *testing.T) {
 	if cfg.Database.Driver != "postgres" {
 		t.Errorf("expected Database.Driver 'postgres', got '%s'", cfg.Database.Driver)
 	}
+	expectedProdDS := "postgres://devops:password@localhost:5432/devops_prod?sslmode=disable"
+	if cfg.Database.Datasource != expectedProdDS {
+		t.Errorf("expected Database.Datasource '%s', got '%s'", expectedProdDS, cfg.Database.Datasource)
+	}
 	if cfg.Kubernetes.Mode != "in-cluster" {
 		t.Errorf("expected Kubernetes.Mode 'in-cluster', got '%s'", cfg.Kubernetes.Mode)
 	}
@@ -84,7 +94,7 @@ app:
   addr: ":9999"
 database:
   driver: mysql
-  dsn: "${CUSTOM_DB_USER:-root}:${CUSTOM_DB_PASS:-secret}@tcp(127.0.0.1:3306)/devops"
+  datasource: "${CUSTOM_DB_USER:-root}:${CUSTOM_DB_PASS:-secret}@tcp(127.0.0.1:3306)/devops"
 kubernetes:
   mode: kubeconfig
 `
@@ -107,7 +117,29 @@ kubernetes:
 		t.Errorf("expected Driver 'mysql', got '%s'", cfg.Database.Driver)
 	}
 	expectedDSN := "myuser:secret@tcp(127.0.0.1:3306)/devops"
+	if cfg.Database.Datasource != expectedDSN {
+		t.Errorf("expected Datasource '%s', got '%s'", expectedDSN, cfg.Database.Datasource)
+	}
 	if cfg.Database.DSN != expectedDSN {
 		t.Errorf("expected DSN '%s', got '%s'", expectedDSN, cfg.Database.DSN)
+	}
+}
+
+func TestDatasourceEnvOverride(t *testing.T) {
+	expectedDS := "postgres://custom:pass@localhost:5432/custom_db?sslmode=disable"
+	t.Setenv("PLATFORM_DATASOURCE", expectedDS)
+	cfg, err := Load("prod")
+	if err != nil {
+		t.Fatalf("failed to load prod config: %v", err)
+	}
+
+	if cfg.Database.Datasource != expectedDS {
+		t.Errorf("expected Database.Datasource '%s', got '%s'", expectedDS, cfg.Database.Datasource)
+	}
+	if cfg.Database.DSN != expectedDS {
+		t.Errorf("expected Database.DSN '%s', got '%s'", expectedDS, cfg.Database.DSN)
+	}
+	if cfg.Datasource != expectedDS {
+		t.Errorf("expected Datasource '%s', got '%s'", expectedDS, cfg.Datasource)
 	}
 }

@@ -1,188 +1,182 @@
-# DevOps 平台开发流程文档
+# DevOps 平台开发与流程规范文档
 
-> 本文档描述平台（Go + Gin + SQLite 后端，React 前端，单容器部署）的开发约定与日常流程。
-> 总体方案见方案文档；本文只讲"怎么开发、怎么提交、怎么发布"。
+> 本文档描述 DevOps 平台（Go + Gin + SQLite/MySQL/Postgres 后端，React 18 + Carbon Design 前端，支持单二进制运行、单容器及 Kubernetes 混合部署）的工程架构、开发约定与日常发布流程。
 
-## 1. 技术栈
+---
 
-| 层 | 选型 | 说明 |
-|---|---|---|
-| 后端框架 | **Gin** | REST API、中间件、SSE 推送日志 |
-| 数据库 | SQLite（`modernc.org/sqlite`，纯 Go，无 CGO） | WAL 模式，单副本 |
-| 数据访问 | `sqlc` + `database/sql` | SQL 生成类型安全代码；Repository 接口隔离，便于换库 |
-| 迁移 | `goose` | SQL 文件按序号管理 |
-| 认证 | `golang-jwt/jwt` + `bcrypt` | 内置账号密码 |
-| 校验 | `go-playground/validator`（Gin 内置集成） | 请求参数校验 |
-| K8s | `client-go`（沿用） | 提交 / 监听 Tekton 资源 |
-| 日志 | `zap`（沿用） | 结构化日志 |
-| 前端 | React + Carbon + Vite（沿用） | `npm run dev` 带 mock 数据 |
+## 1. 核心技术选型
 
-## 2. 环境要求
+| 分层 | 技术选型 | 说明 |
+|:---|:---|:---|
+| **后端框架** | **Gin (Go 1.22+, 验证 1.27.x)** | 高性能 REST API、中间件流水线、SSE 实时日志流推送 |
+| **数据库** | **SQLite / MySQL / PostgreSQL** | 默认采用纯 Go SQLite (`modernc.org/sqlite`，无须 CGO)；通过方言驱动隔离支持切换外部 MySQL/Postgres |
+| **数据访问** | **`database/sql` + Repository 模式** | 数据仓储接口隔离，业务 Service 零数据库方言感知，便于单测 Fake 注入 |
+| **数据库迁移** | **Goose SQL 迁移** | 迁移脚本位于 `backend/db/migrations/`，系统启动时自动检测版本并平滑升级 |
+| **认证与加密** | **JWT (golang-jwt/jwt/v5) + bcrypt + AES-256-GCM** | 内置管理员与多角色 RBAC；凭据敏感信息高强度加密存储并脱敏展示 |
+| **Kubernetes 适配** | **client-go + Dynamic Client + FakeExecutor** | 真实集群环境下动态提交/监听 Tekton CRD；本地无集群时自动降级为 Fake 模式 |
+| **结构化日志** | **Zap (`go.uber.org/zap`)** | 开发环境彩色控制台输出，生产环境 JSON 结构化流式输出 |
+| **前端体系** | **React 18 + Carbon Design + Vite + Vitest** | 支持 `npm run dev` 纯 Mock 独立开发与生产级代理联调 |
 
-- Go ≥ `go.mod` 声明版本（当前 1.27.x），确认 `go version` 可用
-- Node.js（见 `.nvmrc`）+ npm
-- Docker（构建镜像）
-- 可选：`kind` + `kubectl`（联调真实 Tekton，见 `scripts/prepare-kind-cluster`）
-- 可选工具：`sqlc`、`goose`、`golangci-lint`
+---
 
+## 2. 统一代码仓库目录结构
+
+代码仓库采用模块清晰的 Monorepo 单仓结构：
+
+```
+tekton-dashboard/
+├── backend/                        # 后端 Go 平台服务根目录
+│   ├── cmd/
+│   │   ├── platform/               # 平台主服务入口 main.go
+│   │   └── dashboard/              # 兼容与历史独立入口
+│   ├── configs/                    # 内嵌多环境配置文件 (embed.FS)
+│   │   ├── dev.yaml                # 开发环境默认配置
+│   │   ├── test.yaml               # 测试环境配置
+│   │   └── prod.yaml               # 生产环境配置
+│   ├── data/                       # 本地开发 SQLite 数据文件存放目录 (git ignore)
+│   ├── db/
+│   │   └── migrations/             # Goose SQL 数据库版本迁移脚本
+│   ├── dist/                       # 后端独立打包时的静态资源候选目录
+│   ├── internal/                   # 后端内部包 (禁止外部仓库直接 import)
+│   │   ├── api/                    # HTTP Handler 接口层：请求参数校验、标准化响应
+│   │   ├── compiler/               # 流水线 DSL 编译器：DSL → Tekton CRD 转换
+│   │   ├── config/                 # 统一配置加载层：Env / Flag / Yaml 优先级合并
+│   │   ├── crypto/                 # JWT 令牌签发、密码散列与 AES 凭据加解密
+│   │   ├── executor/               # 流水线执行引擎：K8sExecutor 与 FakeExecutor
+│   │   ├── k8s/                    # Kubernetes 客户端 Bundle 构建与代理初始化
+│   │   ├── repository/             # 仓储接口与 SQLite/MySQL/PG 跨方言实现
+│   │   ├── server/                 # Gin 路由注册、中间件装配、静态资源与 SPA 托管
+│   │   ├── service/                # 核心业务逻辑层 (事务、审计、生命周期流转)
+│   │   └── webhook/                # GitHub / GitLab / 通用 Webhook 事件解析适配
+│   ├── pkg/                        # 跨模块通用工具库 (CSRF、Logging、Proxy 等)
+│   ├── Makefile                    # 后端独立编译 Makefile
+│   └── go.mod / go.sum             # Go 依赖配置
+├── frontend/                       # 前端 React 18 模块根目录
+│   ├── src/                        # 前端主应用源码
+│   │   ├── api/                    # 后端 REST API 请求客户端封装
+│   │   ├── containers/             # 页面与主要功能容器 (PlatformDashboard, Pipelines 等)
+│   │   ├── mock/                   # 本地独立开发的完整 Mock 数据集
+│   │   └── routes/                 # 页面路由声明
+│   ├── packages/                   # 独立共享 npm 包 (components, utils, graph)
+│   ├── vite.config.js              # Vite 配置文件 (代理规则、构建规则)
+│   └── package.json                # 前端依赖与构建脚本
+├── deploy/                         # 容器与 Kubernetes 部署物料
+├── docs/                           # 官方文档库
+│   ├── dev/
+│   │   ├── api.md                  # 后端接口完整规范文档
+│   │   ├── native-build.md         # 原生 npm 与 go 编译指南
+│   │   └── README.md               # 开发者环境指南
+│   └── platform/
+│       └── DEVELOPMENT.md          # 本文档
+├── Makefile                        # 根目录全局 Makefile
+├── build.ps1                       # Windows 专属构建脚本
+└── DEVELOPMENT.md                  # 根目录快速上手指南
+```
+
+---
+
+## 3. 架构分层依赖原则
+
+为保证代码可维护性与可测试性，后端代码必须严格遵守**单向依赖**原则：
+
+$$\text{api (HTTP Handler)} \longrightarrow \text{service (业务逻辑)} \longrightarrow \text{repository / executor / compiler (数据访问与外部抽象)}$$
+
+- **Handler 层 (`internal/api`)**：仅负责解析 HTTP 请求参数、调用 Service 层方法、输出统一的 JSON 包装响应，**严禁直接访问数据库连接或 K8s 客户端**。
+- **Service 层 (`internal/service`)**：封装具体业务规则、编排事务与审计日志。Service 仅依赖仓储的 **Interface 接口**，绝不依赖具体 SQL 实现，确保单元测试时可 100% 注入 Mock。
+- **Repository 层 (`internal/repository`)**：实现 SQL 增删改查。使用 `Rebind()` 自动适配 SQLite/MySQL（`?` 占位符）与 PostgreSQL（`$1, $2` 占位符）。
+- **Executor 层 (`internal/executor`)**：封装对流水线执行生命周期的抽象，提供 `K8sExecutor`（面向真实集群）与 `FakeExecutor`（本地离线运行与自动化测试）。
+
+---
+
+## 4. 本地日常开发模式
+
+### 4.1 模式一：纯前端 Mock 独立开发（无须启动后端）
+前端包含完整的数据 Mock 层，脱离后端即可完成页面设计与组件开发。
 ```bash
-go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
-go install github.com/pressly/goose/v3/cmd/goose@latest
+# 方式 A：使用根目录 Makefile
+make dev-frontend
+
+# 方式 B：使用原生 npm
+cd frontend && npm run dev
 ```
+服务将在 `http://localhost:8000/` 启动，所有数据请求均由本地 Mock 拦截器响应。
 
-## 3. 目录约定
-
-```
-cmd/platform/          # 平台入口 main.go
-internal/
-  config/              # 配置加载（env + flag）
-  server/              # Gin 引擎、路由注册、中间件、静态资源 embed
-  api/                 # Handler：只做参数解析/响应，不写业务
-  service/             # 业务逻辑
-  repository/          # 接口 + sqlite 实现（sqlc 生成代码放 repository/sqlc）
-  compiler/            # Pipeline DSL → Tekton CRD
-  executor/            # K8s 提交/取消/删除封装（接口，可 Fake）
-  syncer/              # 监听 PipelineRun/TaskRun 回写数据库
-  crypto/              # 凭据加解密
-  webhook/             # Git 平台回调
-db/
-  migrations/          # goose SQL 迁移
-  queries/             # sqlc 查询 SQL
-deploy/                # Dockerfile、K8s manifests
-docs/platform/         # 本文档与设计文档
-src/ , packages/       # 前端（原有）
-```
-
-**分层依赖方向（禁止反向）**：`api → service → repository / executor / compiler`。
-Handler 不直接访问数据库或 K8s；service 依赖接口而非具体实现，方便单测注入 Fake。
-
-## 4. 本地开发
-
-### 4.1 前端独立开发（无需后端）
-
+### 4.2 模式二：前后端联合联调开发
 ```bash
-npm ci
-npm run dev        # mock 数据，端口 8000
+# 终端 1：启动后端服务 (监听 8080 端口，自动初始化 SQLite 数据库)
+make run-backend
+# 或原生命令：cd backend && go run -tags dev ./cmd/platform -env dev
+
+# 终端 2：启动前端联调模式 (Vite 将 /api/platform 与 /apis/ 代理至 8080)
+cd frontend && npm run prod
 ```
+浏览器打开 `http://localhost:8000/`，默认管理员账号密码为：`admin` / `admin123`。
 
-### 4.2 前后端联调
+---
 
+## 5. 统一编译命令总览
+
+### 5.1 使用根目录 Makefile
 ```bash
-# 终端 1：后端（端口 8080，数据库文件 ./data/platform.db）
-make run           # 等价于 go run ./cmd/platform
-
-# 终端 2：前端，Vite 将 /api/platform 代理到 8080
-npm run prod
+make help                   # 查看所有支持的开发与编译指令
+make dev-frontend           # 启动前端 Mock 开发服务器
+make build-frontend         # 编译前端静态产物至 frontend/dist
+make test-frontend          # 运行前端单元测试
+make lint-frontend          # 前端代码检查与校验
+make run-backend            # 运行后端开发服务
+make build-backend          # 编译后端 Windows 二进制产物
+make build-backend-linux    # 静态交叉编译 Linux amd64 二进制产物
+make build-backend-all      # 同时编译 Windows 与 Linux 二进制
+make test-backend           # 运行后端单元测试套件
 ```
 
-### 4.3 配置项（环境变量）
+### 5.2 使用 Windows PowerShell `build.ps1`
+```powershell
+# 编译全套（前端 + 后端 Windows 版）
+.\build.ps1 -Frontend -Target windows
 
-| 变量 | 默认 | 说明 |
-|---|---|---|
-| `PLATFORM_ADDR` | `:8080` | 监听地址 |
-| `PLATFORM_DB_PATH` | `./data/platform.db` | SQLite 文件 |
-| `PLATFORM_JWT_SECRET` | 开发默认值 | **生产必须通过 Secret 注入** |
-| `PLATFORM_SECRET_KEY` | 开发默认值 | 凭据 AES-GCM 主密钥 |
-| `PLATFORM_KUBECONFIG` | 空 | 空则尝试 in-cluster，再无则进入"无 K8s"模式（executor 使用 Fake） |
-| `PLATFORM_LOG_LEVEL` | `info` | 日志级别 |
+# 交叉编译 Linux 版后端
+.\build.ps1 -Target linux
 
-## 5. 数据库流程
-
-```bash
-make migrate-new name=add_projects   # 新建迁移文件 db/migrations/000X_add_projects.sql
-make migrate-up                      # 应用迁移
-make migrate-down                    # 回滚一步
-make sqlc                            # 修改 db/queries/*.sql 后重新生成代码
+# 运行测试并编译全平台产物
+.\build.ps1 -Test -Target all
 ```
 
-规则：
-1. **迁移只增不改**：已合并的迁移文件不得修改，需要变更就新增一个迁移。
-2. 每个迁移必须含 `Up` 和 `Down`。
-3. 启动时自动执行 `migrate-up`（单容器场景），失败则进程退出。
-4. SQLite 连接开启 `PRAGMA journal_mode=WAL; foreign_keys=ON; busy_timeout=5000`。
-5. 写操作集中走同一连接池（`SetMaxOpenConns(1)` 用于写），避免 `database is locked`。
+### 5.3 使用原生 `npm` 与 `go` 原生编译
+完整细节请参阅：👉 **[docs/dev/native-build.md](../dev/native-build.md)**。
 
-## 6. API 开发规范
+---
 
-- 前缀：`/api/platform/v1`；原有 `/apis/...` K8s 代理保持不变。
-- 统一响应：
+## 6. 数据库设计与迁移管理
 
-```json
-{ "code": 0, "message": "ok", "data": {} }
-```
+1. **自动迁移机制**：
+   后端服务启动时会自动检查数据库版本（基于 Goose 规范），并在初始化连接池后执行安全平滑升级，无需手动执行 DDL。
+2. **连接池与锁控制**：
+   - SQLite 默认开启 WAL 日志模式（`PRAGMA journal_mode=WAL;`）并设置 `busy_timeout=5000`，有效避免并发写争用。
+   - 生产环境建议根据 QPS 配置连接池大小（`max_open_conns` 与 `max_idle_conns`）。
+3. **新增数据表或字段规范**：
+   - 迁移脚本放置于 `backend/db/migrations/`。
+   - 命名遵循序号规范：`000X_description.sql`，必须同时包含 `-- +goose Up` 与 `-- +goose Down`。
+   - 遵循“只增不改”原则，历史已合入的迁移脚本严禁修改。
 
-错误时 `code != 0`，HTTP 状态码使用语义化值（400/401/403/404/409/500）。
-- 列表接口统一分页参数 `page`、`pageSize`，响应含 `total`。
-- 所有写接口写入 `audit_logs`。
-- 凭据类接口响应**永不返回明文**。
-- 鉴权：`Authorization: Bearer <jwt>`；角色 `admin / dev / viewer` 由中间件校验。
-- 实时日志用 **SSE**（`text/event-stream`，Gin 中 `c.Stream` / `c.SSEvent`），状态推送可选 WebSocket。
-- 新增接口步骤：`db/queries` 加 SQL → `make sqlc` → repository → service → api handler → 路由注册 → 测试。
+---
 
-## 7. 测试策略
+## 7. 质量保障与测试规范
 
-| 类型 | 范围 | 命令 |
-|---|---|---|
-| 单元测试 | service、compiler（DSL→CRD 用 golden file） | `make test` |
-| Repository 测试 | 用 `:memory:` 或临时文件 SQLite 跑真实 SQL | `make test` |
-| API 测试 | `httptest` + Gin，executor 注入 Fake | `make test` |
-| 前端测试 | vitest | `npm test` |
-| E2E | kind 集群 + 真实 Tekton（M2 起） | `make e2e` |
+| 测试层级 | 测试目标 | 执行命令 | 说明 |
+|:---|:---|:---|:---|
+| **后端单测** | Repository、Config、Server API 流程 | `cd backend && go test -v ./...` | 使用内存 SQLite 或临时文件运行真实事务与接口断言 |
+| **前端单测** | 组件渲染、工具函数、状态流转 | `cd frontend && npm test` | 基于 Vitest 与 Testing Library 进行断言 |
+| **代码规范** | Go 语法与依赖健康 | `cd backend && go vet ./...` | 遵循标准 Go 编码格式 |
+| **代码格式** | 前端 ESLint & Prettier | `cd frontend && npm run lint` | 统一团队样式与代码规范 |
 
-要求：新增功能必须带测试；compiler 的变更必须更新 golden 文件并在 PR 说明差异。
+---
 
-## 8. 代码规范
+## 8. 单容器与生产发布流程
 
-- Go：`gofmt` / `goimports`，`golangci-lint run`，错误用 `fmt.Errorf("...: %w", err)` 包装，不吞错误。
-- 日志不得打印密码、token、凭据明文。
-- 前端：`npm run lint`，样式沿用既有简约风格，不引入新设计体系。
-- 提交信息：`feat|fix|refactor|docs|test|chore(scope): 描述`。
-
-## 9. 分支与 PR 流程
-
-1. 从 `main` 拉分支：`feat/<milestone>-<简述>`，如 `feat/m1-pipeline-crud`。
-2. 小步提交，保持每个 PR 只做一件事、可独立回滚。
-3. 提 PR 前本地通过：
-   ```bash
-   make lint test
-   npm run lint && npm test
-   ```
-4. PR 必须包含：变更说明、测试说明、涉及迁移时的回滚方案。
-5. 至少一人 review 后合并（squash merge）。
-
-## 10. 构建与发布（单容器）
-
-```bash
-make build          # 先 npm run build，再 go build（embed 前端产物）
-make docker         # 构建镜像 platform:<tag>
-docker run -p 8080:8080 -v $(pwd)/data:/data platform:dev
-```
-
-- Dockerfile 多阶段：node 构建前端 → golang 构建（`CGO_ENABLED=0`）→ distroless 运行。
-- 数据目录 `/data` 必须挂卷（K8s 使用 PVC），**仅支持单副本**。
-- K8s 部署需 ServiceAccount + RBAC（对 `tekton.dev` 资源的读写与 watch）。
-- 版本号通过 `-ldflags "-X main.version=..."` 注入，`GET /api/platform/v1/version` 返回。
-
-## 11. 里程碑与 Definition of Done
-
-每个里程碑（M0–M5）完成需满足：
-- [ ] 功能按验收标准可演示
-- [ ] 新增代码有测试且 CI 通过
-- [ ] 迁移可正向/回滚
-- [ ] 文档（本文、API 文档）同步更新
-- [ ] `docker run` 单容器可启动并完成该里程碑的核心场景
-
-### M0 任务清单（下一步）
-
-1. 初始化 `cmd/platform`、`internal/config`、`internal/server`（Gin + 健康检查 `/healthz`）
-2. 引入 SQLite + goose，建 `users`、`projects` 初始迁移，启动自动迁移
-3. 登录（bcrypt + JWT）、`/me`、鉴权中间件、首次启动创建 admin
-4. 前端对接框架：`src/platform-api/` + 登录页 + mock
-5. `go:embed` 前端产物 + SPA 路由回退
-6. Makefile、Dockerfile，单容器跑通并登录
-
-## 12. 常见问题
-
-- **`database is locked`**：检查是否开启 WAL 和 `busy_timeout`，写操作是否并发过多。
-- **本地没有 K8s**：不设 `PLATFORM_KUBECONFIG`，executor 自动使用 Fake，可完整演示配置与界面。
-- **前端 `npm run dev` 没数据**：确认使用的是 mock 模式（`.env.mock`），联调请用 `npm run prod`。
+1. **静态产物内嵌托管**：
+   前端执行 `npm run build` 生成 `frontend/dist` 后，后端启动时会自动发现并注册静态路由，任意 SPA 页面刷新均通过 `NoRoute` 自动回退至 `index.html`，无需额外配置 Nginx 即可独立提供完整的 Web 服务。
+2. **纯静态可执行文件**：
+   通过 `CGO_ENABLED=0 go build -ldflags "-s -w"` 编译出的后端二进制文件不依赖任何系统的动态链接库（glibc 等），可直接在 Alpine Linux、Ubuntu 或无基础运行时的 Scratch/Distroless 容器镜像中极简运行。
+3. **版本号与提交追踪**：
+   在构建流程中通过 `-X main.version=$(VERSION)` 注入版本信息，运维可通过执行 `./platform -version` 或调用 `GET /api/platform/v1/version` 实时核对。

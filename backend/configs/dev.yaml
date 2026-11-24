@@ -8,7 +8,7 @@ app:
 
 database:
   driver: sqlite
-  dsn: ./data/platform-dev.db
+  datasource: ./data/platform-dev.db
   max_open_conns: 25
   max_idle_conns: 5
   conn_max_lifetime: 5m

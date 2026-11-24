@@ -49,19 +49,19 @@ describe('App', () => {
       <App lang="en" />
     );
 
-    await waitFor(() => queryByText('Tekton resources'));
-    await findAllByText('PipelineRuns');
-    fireEvent.click(queryAllByText('PipelineRuns')[0]);
+    await waitFor(() => queryByText(/Tekton resources|流水线中心|工作台/));
+    await findAllByText(/PipelineRuns|流水线执行/);
+    fireEvent.click(queryAllByText(/PipelineRuns|流水线执行/)[0]);
 
-    expect(queryByText('Pipelines')).toBeTruthy();
-    expect(queryByText('Tasks')).toBeTruthy();
+    expect(queryByText(/Pipelines|Tekton 流水线/)).toBeTruthy();
+    expect(queryByText(/Tasks|任务/)).toBeTruthy();
   });
 
   it('does not call namespaces API in tenant namespace mode', async () => {
     vi.spyOn(API, 'useTenantNamespaces').mockImplementation(() => ['fake']);
     const { queryByText } = render(<App lang="en" />);
 
-    await waitFor(() => queryByText('Tekton resources'));
+    await waitFor(() => queryByText(/Tekton resources|流水线中心|工作台/));
     expect(API.useNamespaces).toHaveBeenCalledWith(
       expect.objectContaining({ enabled: false })
     );

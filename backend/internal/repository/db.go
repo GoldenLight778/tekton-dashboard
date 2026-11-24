@@ -20,7 +20,8 @@ import (
 // DBConfig holds database connection configuration
 type DBConfig struct {
 	Driver          string        // sqlite, mysql, postgres
-	DSN             string        // connection string or file path
+	Datasource      string        // connection string or file path
+	DSN             string        // alias for Datasource
 	MaxOpenConns    int
 	MaxIdleConns    int
 	ConnMaxLifetime time.Duration
@@ -34,6 +35,11 @@ func InitDBFromConfig(cfg DBConfig, logger *zap.Logger) (*sql.DB, error) {
 		driver = "sqlite"
 	}
 
+	dsn := cfg.Datasource
+	if dsn == "" {
+		dsn = cfg.DSN
+	}
+
 	var sqlDriver string
 	var dialect string
 	var migrationDir string
@@ -43,8 +49,8 @@ func InitDBFromConfig(cfg DBConfig, logger *zap.Logger) (*sql.DB, error) {
 		sqlDriver = "sqlite"
 		dialect = "sqlite3"
 		migrationDir = "migrations/sqlite3"
-		if cfg.DSN != ":memory:" {
-			dir := filepath.Dir(cfg.DSN)
+		if dsn != ":memory:" && dsn != "" {
+			dir := filepath.Dir(dsn)
 			if dir != "" && dir != "." {
 				_ = os.MkdirAll(dir, 0755)
 			}
@@ -61,9 +67,12 @@ func InitDBFromConfig(cfg DBConfig, logger *zap.Logger) (*sql.DB, error) {
 		return nil, fmt.Errorf("unsupported database driver: %s (supported: sqlite, mysql, postgres)", driver)
 	}
 
-	logger.Info("opening database", zap.String("driver", sqlDriver), zap.String("dsn", maskDSN(cfg.DSN)))
+	logger.Info("opening database",
+		zap.String("driver", sqlDriver),
+		zap.String("datasource", maskDSN(dsn)),
+	)
 
-	db, err := sql.Open(sqlDriver, cfg.DSN)
+	db, err := sql.Open(sqlDriver, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database (%s): %w", sqlDriver, err)
 	}
@@ -135,8 +144,9 @@ func InitDBFromConfig(cfg DBConfig, logger *zap.Logger) (*sql.DB, error) {
 // InitDB preserves backwards compatibility, initializing SQLite
 func InitDB(dbPath string, logger *zap.Logger) (*sql.DB, error) {
 	return InitDBFromConfig(DBConfig{
-		Driver: "sqlite",
-		DSN:    dbPath,
+		Driver:     "sqlite",
+		Datasource: dbPath,
+		DSN:        dbPath,
 	}, logger)
 }
 

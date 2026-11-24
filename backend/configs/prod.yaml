@@ -8,7 +8,7 @@ app:
 
 database:
   driver: ${PLATFORM_DB_DRIVER:-postgres} # postgres | mysql | sqlite
-  dsn: ${PLATFORM_DB_DSN:-postgres://devops:password@localhost:5432/devops_prod?sslmode=disable}
+  datasource: ${PLATFORM_DATASOURCE:-postgres://devops:password@localhost:5432/devops_prod?sslmode=disable}
   max_open_conns: 100
   max_idle_conns: 20
   conn_max_lifetime: 15m

@@ -395,7 +395,9 @@ describe('getLocale', () => {
   });
 
   it('handles unsupported locales', () => {
-    expect(getLocale('zz')).toEqual('en');
+    expect(getLocale('zz')).toEqual(
+      import.meta.env.VITE_LOCALES_DEFAULT || 'en'
+    );
   });
 });
 

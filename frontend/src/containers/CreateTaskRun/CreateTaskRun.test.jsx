@@ -100,7 +100,7 @@ describe('CreateTaskRun', () => {
       path: '/taskruns/create',
       route: '/taskruns/create?kind=Task'
     });
-    expect(queryByText('Create TaskRun')).toBeTruthy();
+    expect(queryByText(/Create TaskRun/)).toBeTruthy();
     expect(queryByPlaceholderText(/select namespace/i)).toBeTruthy();
     expect(queryByPlaceholderText(/select task/i).disabled).toBeTruthy();
     expect(
