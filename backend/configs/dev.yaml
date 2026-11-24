@@ -3,8 +3,8 @@ app:
   env: dev
   addr: ":8080"
   log_level: debug
-  jwt_secret: dev-jwt-secret-do-not-use-in-production
-  secret_key: 0123456789abcdef0123456789abcdef
+  jwt_secret: dev-jwt
+  secret_key: g8GPhlESz26AV/Qs++NOUc3ye2f9LMohkfl1lVAhUwM=
 
 database:
   driver: sqlite
