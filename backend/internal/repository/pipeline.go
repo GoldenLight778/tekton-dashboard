@@ -29,6 +29,7 @@ type PipelineRepository interface {
 	GetByID(ctx context.Context, id string) (*Pipeline, error)
 	GetByProjectAndName(ctx context.Context, projectID, name string) (*Pipeline, error)
 	ListByProject(ctx context.Context, projectID string, page, pageSize int) ([]Pipeline, int, error)
+	ListAll(ctx context.Context) ([]Pipeline, error)
 	Update(ctx context.Context, p *Pipeline) error
 	Delete(ctx context.Context, id string) error
 }
@@ -128,6 +129,27 @@ func (r *SQLitePipelineRepository) ListByProject(ctx context.Context, projectID 
 
 	return list, total, nil
 }
+
+func (r *SQLitePipelineRepository) ListAll(ctx context.Context) ([]Pipeline, error) {
+	query := `SELECT id, project_id, name, dsl_content, created_at, updated_at 
+	          FROM pipelines ORDER BY created_at DESC`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all pipelines: %w", err)
+	}
+	defer rows.Close()
+
+	var list []Pipeline
+	for rows.Next() {
+		var p Pipeline
+		if err := rows.Scan(&p.ID, &p.ProjectID, &p.Name, &p.DSLContent, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan pipeline: %w", err)
+		}
+		list = append(list, p)
+	}
+	return list, nil
+}
+
 
 func (r *SQLitePipelineRepository) Update(ctx context.Context, p *Pipeline) error {
 	query := `UPDATE pipelines SET name = ?, dsl_content = ?, updated_at = ? WHERE id = ?`

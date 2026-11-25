@@ -15,6 +15,7 @@ import { Logout as LogoutIcon } from '@carbon/react/icons';
 import { HeaderGlobalAction } from '@carbon/react';
 import { useIntl } from 'react-intl';
 import { useLogoutURL } from '../../api';
+import { clearToken } from '../../api/platform';
 
 export default function LogoutButton() {
   const intl = useIntl();
@@ -34,6 +35,7 @@ export default function LogoutButton() {
       aria-label={logoutString}
       className="tkn--logout-btn"
       onClick={() => {
+        clearToken();
         window.location.href = logoutURL;
       }}
       tooltipAlignment="end"

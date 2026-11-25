@@ -15,6 +15,8 @@ limitations under the License.
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { useIntl } from 'react-intl';
+import { useQueryClient } from '@tanstack/react-query';
+import { Button } from '@carbon/react';
 import {
   CancelStatusOptions,
   DeleteModal,
@@ -37,7 +39,13 @@ import {
   urls,
   useTitleSync
 } from '@tektoncd/dashboard-utils';
-import { Add, TrashCan as Delete, StopOutline } from '@carbon/react/icons';
+import {
+  Add,
+  TrashCan as Delete,
+  Renew as RenewIcon,
+  Rocket as RocketIcon,
+  StopOutline
+} from '@carbon/react/icons';
 
 import ListPageLayout from '../ListPageLayout';
 import { keyBy, sortRunsByStartTime } from '../../utils';
@@ -56,6 +64,7 @@ export function PipelineRuns() {
   const location = useLocation();
   const navigate = useNavigate();
   const params = useParams();
+  const queryClient = useQueryClient();
 
   const { selectedNamespace } = useSelectedNamespace();
   const { namespace = selectedNamespace } = params;
@@ -391,51 +400,113 @@ export function PipelineRuns() {
   );
 
   return (
-    <ListPageLayout
-      error={getError()}
-      filters={filters}
-      resources={pipelineRuns.filter(run => {
-        return runMatchesStatusFilter({
-          run,
-          statusFilter
-        });
-      })}
-      title="PipelineRuns"
-    >
-      {({ resources }) => (
-        <>
-          <PipelineRunsList
-            batchActionButtons={batchActionButtons}
-            filters={filtersUI}
-            getRunActions={pipelineRunActions}
-            loading={isLoadingPipelineRuns}
-            pipelineRuns={resources}
-            selectedNamespace={namespace}
-            toolbarButtons={toolbarButtons}
-          />
-          {showDeleteModal ? (
-            <DeleteModal
-              kind="PipelineRuns"
-              onClose={closeDeleteModal}
-              onSubmit={handleDelete}
-              resources={toBeDeleted}
-              showNamespace={namespace === ALL_NAMESPACES}
+    <div className="platform-container">
+      <div className="platform-hero">
+        <div className="platform-hero-content">
+          <h1>
+            <RocketIcon size={28} />
+            {intl.formatMessage({
+              id: 'dashboard.pipelineRuns.title',
+              defaultMessage: '流水线执行记录 (PipelineRuns)'
+            })}
+          </h1>
+          <p>
+            {intl.formatMessage({
+              id: 'dashboard.pipelineRuns.description',
+              defaultMessage:
+                '实时监控流水线运行实例、阶段执行进度、容器标准输出日志及重跑控制。'
+            })}
+          </p>
+        </div>
+        <div className="platform-hero-actions">
+          <Button
+            disabled={isLoadingPipelineRuns}
+            kind="ghost"
+            onClick={() =>
+              queryClient.invalidateQueries({ queryKey: ['tekton.dev'] })
+            }
+            renderIcon={RenewIcon}
+            size="md"
+          >
+            {intl.formatMessage({
+              id: 'platform.refresh',
+              defaultMessage: '刷新'
+            })}
+          </Button>
+          {!isReadOnly && (
+            <Button
+              kind="primary"
+              onClick={() => {
+                let queryString;
+                if (namespace !== ALL_NAMESPACES) {
+                  queryString = new URLSearchParams({
+                    namespace,
+                    ...(pipelineName && { pipelineName })
+                  }).toString();
+                }
+                navigate(
+                  urls.pipelineRuns.create() +
+                    (queryString ? `?${queryString}` : '')
+                );
+              }}
+              renderIcon={Add}
+              size="md"
+            >
+              {intl.formatMessage({
+                id: 'dashboard.pipelineRuns.createPipelineRunButton',
+                defaultMessage: '创建流水线执行'
+              })}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <ListPageLayout
+        error={getError()}
+        filters={filters}
+        resources={pipelineRuns.filter(run => {
+          return runMatchesStatusFilter({
+            run,
+            statusFilter
+          });
+        })}
+        title=""
+      >
+        {({ resources }) => (
+          <>
+            <PipelineRunsList
+              batchActionButtons={batchActionButtons}
+              filters={filtersUI}
+              getRunActions={pipelineRunActions}
+              loading={isLoadingPipelineRuns}
+              pipelineRuns={resources}
+              selectedNamespace={namespace}
+              toolbarButtons={toolbarButtons}
             />
-          ) : null}
-          {showStopModal ? (
-            <StopModal
-              cancelStatus={cancelStatus}
-              kind="PipelineRuns"
-              onClose={closeStopModal}
-              onSubmit={handleStop}
-              resources={toBeStopped}
-              onChangeCancelStatus={setCancelStatus}
-              showNamespace={namespace === ALL_NAMESPACES}
-            />
-          ) : null}
-        </>
-      )}
-    </ListPageLayout>
+            {showDeleteModal ? (
+              <DeleteModal
+                kind="PipelineRuns"
+                onClose={closeDeleteModal}
+                onSubmit={handleDelete}
+                resources={toBeDeleted}
+                showNamespace={namespace === ALL_NAMESPACES}
+              />
+            ) : null}
+            {showStopModal ? (
+              <StopModal
+                cancelStatus={cancelStatus}
+                kind="PipelineRuns"
+                onClose={closeStopModal}
+                onSubmit={handleStop}
+                resources={toBeStopped}
+                onChangeCancelStatus={setCancelStatus}
+                showNamespace={namespace === ALL_NAMESPACES}
+              />
+            ) : null}
+          </>
+        )}
+      </ListPageLayout>
+    </div>
   );
 }
 

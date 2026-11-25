@@ -15,6 +15,8 @@ limitations under the License.
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { useIntl } from 'react-intl';
+import { useQueryClient } from '@tanstack/react-query';
+import { Button } from '@carbon/react';
 import {
   ALL_NAMESPACES,
   getFilters,
@@ -36,7 +38,9 @@ import {
   Add,
   Calendar as CalendarIcon,
   TrashCan as DeleteIcon,
+  Renew as RenewIcon,
   StopOutline,
+  Task as TaskIcon,
   Time as TimeIcon,
   Lightning as TriggersIcon,
   UndefinedFilled as UndefinedIcon
@@ -111,6 +115,7 @@ function CustomRuns() {
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams();
+  const queryClient = useQueryClient();
   const filters = getFilters(location);
 
   useTitleSync({ page: 'CustomRuns' });
@@ -420,12 +425,70 @@ function CustomRuns() {
   }
 
   return (
-    <ListPageLayout
-      error={getError()}
-      filters={filters}
-      resources={runs}
-      title="CustomRuns"
-    >
+    <div className="platform-container">
+      <div className="platform-hero">
+        <div className="platform-hero-content">
+          <h1>
+            <TaskIcon size={28} />
+            {intl.formatMessage({
+              id: 'dashboard.customRuns.title',
+              defaultMessage: '自定义执行 (CustomRuns)'
+            })}
+          </h1>
+          <p>
+            {intl.formatMessage({
+              id: 'dashboard.customRuns.description',
+              defaultMessage:
+                '管理与追踪自定义任务控制器（Custom Task）的运行时实例与状态反馈。'
+            })}
+          </p>
+        </div>
+        <div className="platform-hero-actions">
+          <Button
+            disabled={isPending}
+            kind="ghost"
+            onClick={() =>
+              queryClient.invalidateQueries({ queryKey: ['tekton.dev'] })
+            }
+            renderIcon={RenewIcon}
+            size="md"
+          >
+            {intl.formatMessage({
+              id: 'platform.refresh',
+              defaultMessage: '刷新'
+            })}
+          </Button>
+          {!isReadOnly && (
+            <Button
+              kind="primary"
+              onClick={() => {
+                const queryString = new URLSearchParams({
+                  ...(namespace !== ALL_NAMESPACES && { namespace }),
+                  mode: 'yaml'
+                }).toString();
+                navigate(
+                  urls.customRuns.create() +
+                    (queryString ? `?${queryString}` : '')
+                );
+              }}
+              renderIcon={Add}
+              size="md"
+            >
+              {intl.formatMessage({
+                id: 'dashboard.customRuns.createCustomRunButton',
+                defaultMessage: '创建自定义执行'
+              })}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <ListPageLayout
+        error={getError()}
+        filters={filters}
+        resources={runs}
+        title=""
+      >
       {({ resources }) => {
         const runsFormatted = resources.map(run => {
           const { creationTimestamp } = run.metadata;
@@ -609,6 +672,7 @@ function CustomRuns() {
         );
       }}
     </ListPageLayout>
+    </div>
   );
 }
 

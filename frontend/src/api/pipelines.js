@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { deleteRequest } from './comms';
+import { deleteRequest, post } from './comms';
 import {
   getKubeAPI,
   getTektonPipelinesAPIVersion,
@@ -19,6 +19,60 @@ import {
   useCollection,
   useResource
 } from './utils';
+
+export function createTektonPipeline({
+  name,
+  namespace = 'default',
+  description = '',
+  taskName = 'build-step',
+  taskRefName = '',
+  stepImage = 'alpine:latest',
+  stepScript = '#!/bin/sh\necho "Running Tekton Pipeline..."',
+  rawResource
+}) {
+  const taskEntry = taskRefName
+    ? {
+        name: taskName || taskRefName,
+        taskRef: {
+          name: taskRefName
+        }
+      }
+    : {
+        name: taskName || 'execute',
+        taskSpec: {
+          steps: [
+            {
+              name: 'execute',
+              image: stepImage || 'alpine:latest',
+              script: stepScript || 'echo "Pipeline task executed"'
+            }
+          ]
+        }
+      };
+
+  const resource = rawResource || {
+    apiVersion: `tekton.dev/${getTektonPipelinesAPIVersion()}`,
+    kind: 'Pipeline',
+    metadata: {
+      name,
+      namespace: namespace || 'default'
+    },
+    spec: {
+      ...(description ? { description } : {}),
+      tasks: [taskEntry]
+    }
+  };
+
+  const targetNamespace =
+    resource?.metadata?.namespace || namespace || 'default';
+  const uri = getKubeAPI({
+    group: tektonAPIGroup,
+    kind: 'pipelines',
+    params: { namespace: targetNamespace },
+    version: getTektonPipelinesAPIVersion()
+  });
+  return post(uri, resource).then(({ body }) => body);
+}
 
 export function deletePipeline({ name, namespace }) {
   const uri = getKubeAPI({

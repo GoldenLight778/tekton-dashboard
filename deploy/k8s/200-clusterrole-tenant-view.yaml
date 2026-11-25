@@ -1,4 +1,4 @@
-# Copyright 2019-2024 The Tekton Authors
+# Copyright 2019-2026 The Tekton Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,28 +15,27 @@
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: tekton-dashboard-tenant-view
+  name: tekton-devops-readonly
   labels:
     app.kubernetes.io/component: dashboard
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-dashboard
+    app.kubernetes.io/managed-by: tekton-devops-dashboard
+    tekton-devops-dashboard: "true"
+    rbac.tekton-devops.io/role-type: "readonly"
+  annotations:
+    rbac.tekton-devops.io/display-name: "只读角色"
+    rbac.tekton-devops.io/description: "仅具备流水线、任务、触发器及实时容器日志的只读查看权限"
 rules:
-  - apiGroups:
-      - dashboard.tekton.dev
-    resources:
-      - extensions
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ''
-    resources:
-      - events
-      - namespaces
-      - pods
-      - pods/log
-    verbs:
-      - get
-      - list
-      - watch
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "pods/log", "events", "serviceaccounts", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["tekton.dev"]
+    resources: ["tasks", "taskruns", "pipelines", "pipelineruns", "stepactions", "customruns", "runs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["triggers.tekton.dev"]
+    resources: ["eventlisteners", "triggers", "triggerbindings", "clustertriggerbindings", "triggertemplates", "interceptors", "clusterinterceptors"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["dashboard.tekton.dev"]
+    resources: ["extensions"]
+    verbs: ["get", "list", "watch"]

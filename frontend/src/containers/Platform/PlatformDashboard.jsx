@@ -19,6 +19,7 @@ import {
   DataTable,
   InlineNotification,
   Loading,
+  Modal,
   Table,
   TableBody,
   TableCell,
@@ -27,16 +28,21 @@ import {
   TableRow
 } from '@carbon/react';
 import {
-  Time as ClockIcon,
   Dashboard as DashboardIcon,
   Folder as FolderIcon,
+  ApiKey as KeyIcon,
   Launch as LaunchIcon,
   Renew as RefreshIcon,
   Rocket as RocketIcon,
-  CheckmarkOutline as SuccessIcon
+  UserAdmin as ShieldIcon,
+  CheckmarkOutline as SuccessIcon,
+  Task as TaskIcon,
+  Terminal as TerminalIcon
 } from '@carbon/react/icons';
+import { ALL_NAMESPACES, urls } from '@tektoncd/dashboard-utils';
 
-import { getDashboardMetrics } from '../../api/platform';
+import { useSelectedNamespace } from '../../api';
+import { getDashboardMetrics, usePermissions } from '../../api/platform';
 
 export function PlatformDashboard() {
   const intl = useIntl();
@@ -46,15 +52,79 @@ export function PlatformDashboard() {
   /* eslint-enable formatjs/enforce-default-message */
 
   const navigate = useNavigate();
+  const { selectedNamespace } = useSelectedNamespace();
+  const perm = usePermissions(selectedNamespace);
+
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [activeLogRun, setActiveLogRun] = useState(null);
+  const [logLines, setLogLines] = useState([]);
+  const [logStreaming, setLogStreaming] = useState(false);
 
-  const fetchMetrics = async () => {
+  const pipelinesPath =
+    selectedNamespace && selectedNamespace !== ALL_NAMESPACES
+      ? urls.pipelines.byNamespace({ namespace: selectedNamespace })
+      : urls.pipelines.all();
+
+  const tasksPath =
+    selectedNamespace && selectedNamespace !== ALL_NAMESPACES
+      ? urls.tasks.byNamespace({ namespace: selectedNamespace })
+      : urls.tasks.all();
+
+  const pipelineRunsPath =
+    selectedNamespace && selectedNamespace !== ALL_NAMESPACES
+      ? urls.pipelineRuns.byNamespace({ namespace: selectedNamespace })
+      : urls.pipelineRuns.all();
+
+  const openLiveLogViewer = run => {
+    setActiveLogRun(run);
+    setLogLines([]);
+    setLogModalOpen(true);
+    setLogStreaming(true);
+
+    const es = new EventSource(`/api/platform/v1/runs/${run.id}/logs/sse`);
+    es.onmessage = event => {
+      if (event.data) {
+        setLogLines(prev => [...prev, event.data]);
+      }
+    };
+    es.onerror = () => {
+      setLogStreaming(false);
+      es.close();
+    };
+    window._activeDashboardLogES = es;
+  };
+
+  const closeLiveLogViewer = () => {
+    if (window._activeDashboardLogES) {
+      window._activeDashboardLogES.close();
+      window._activeDashboardLogES = null;
+    }
+    setLogStreaming(false);
+    setLogModalOpen(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (window._activeDashboardLogES) {
+        window._activeDashboardLogES.close();
+        window._activeDashboardLogES = null;
+      }
+    };
+  }, []);
+
+  const fetchMetrics = async (isManual = false) => {
     try {
-      setLoading(true);
+      if (isManual) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
-      const data = await getDashboardMetrics();
+      const data = await getDashboardMetrics(selectedNamespace);
       setMetrics(data);
     } catch (err) {
       setError(
@@ -62,12 +132,13 @@ export function PlatformDashboard() {
       );
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    fetchMetrics();
-  }, []);
+    fetchMetrics(false);
+  }, [selectedNamespace]);
 
   const getStatusPill = status => {
     switch (status) {
@@ -106,35 +177,59 @@ export function PlatformDashboard() {
   };
 
   const headers = [
-    { key: 'run_id', header: t('platform.table.runId', '执行 ID') },
+    { key: 'run_id', header: t('platform.table.runId', 'PipelineRun 实例') },
     {
       key: 'pipeline_name',
-      header: t('platform.table.pipeline', '流水线名称')
+      header: t('platform.table.pipeline', 'Tekton 流水线')
     },
-    { key: 'project_name', header: t('platform.table.workspace', '所属项目') },
+    { key: 'namespace', header: t('platform.table.namespace', 'K8s 命名空间') },
     { key: 'status', header: t('platform.table.status', '状态') },
     { key: 'triggered_by', header: t('platform.table.triggeredBy', '触发源') },
     { key: 'duration', header: t('platform.table.duration', '执行耗时') },
-    { key: 'created_at', header: t('platform.table.startedAt', '启动时间') }
+    { key: 'created_at', header: t('platform.table.startedAt', '启动时间') },
+    { key: 'actions', header: t('platform.table.actions', '操作') }
   ];
 
   const recentRunRows =
     metrics?.recent_runs?.map(run => ({
       id: run.id,
-      run_id: <span className="code-chip">#{run.id?.slice(0, 8)}</span>,
+      run_id: (
+        <code className="row-code-tag">
+          {run.k8s_name || `#${run.id?.slice(0, 8)}`}
+        </code>
+      ),
       pipeline_name: (
         <span style={{ fontWeight: 600, color: '#1e293b' }}>
           {run.pipeline_name || 'unnamed'}
         </span>
       ),
-      project_name: run.project_name || 'default',
+      namespace: (
+        <code className="row-code-tag">
+          {run.namespace || run.project_name || 'default'}
+        </code>
+      ),
       status: getStatusPill(run.status),
       triggered_by: (
-        <span className="code-chip">{run.triggered_by || 'manual'}</span>
+        <code className="row-code-tag">{run.triggered_by || 'manual'}</code>
       ),
       duration: run.duration_seconds ? `${run.duration_seconds}s` : '< 1s',
-      created_at: new Date(run.created_at).toLocaleString()
+      created_at: new Date(run.created_at).toLocaleString(),
+      actions: (
+        <Button
+          kind="ghost"
+          onClick={() => openLiveLogViewer(run)}
+          renderIcon={TerminalIcon}
+          size="sm"
+        >
+          实时日志
+        </Button>
+      )
     })) || [];
+
+  const nsCount =
+    metrics?.total_namespaces ?? metrics?.total_projects ?? 2;
+  const secretsCount =
+    metrics?.total_secrets ?? metrics?.total_credentials ?? 0;
 
   return (
     <div className="platform-container">
@@ -143,47 +238,62 @@ export function PlatformDashboard() {
         <div className="platform-hero-content">
           <h1>
             <DashboardIcon size={32} />{' '}
-            {t('platform.title', 'DevOps 自动化交付控制台')}
+            {t('platform.title', 'Tekton 云原生 CI/CD 控制台')}
           </h1>
           <p>
             {t(
               'platform.subtitle',
-              '云原生 Tekton 流水线编排、容器构建与 GitOps 持续交付平台'
+              '基于 Kubernetes Namespace、Tekton 原生 CRD 与 RBAC 鉴权的持续交付大盘'
             )}
           </p>
-          <div className="platform-status-badge">
-            <span className="status-dot" />{' '}
-            {t(
-              'platform.status.online',
-              'Tekton 执行引擎在线 • SQLite WAL 存储就绪'
-            )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+            <div className="platform-status-badge">
+              <span className="status-dot" />{' '}
+              <span>
+                当前作用域:{' '}
+                <strong>
+                  {selectedNamespace === ALL_NAMESPACES || !selectedNamespace
+                    ? 'All Namespaces'
+                    : selectedNamespace}
+                </strong>
+              </span>
+            </div>
+            <div className="platform-status-badge">
+              <ShieldIcon size={14} />{' '}
+              <span>
+                身份: <strong>{perm.username}</strong> ({perm.k8s_cluster_role})
+              </span>
+            </div>
           </div>
         </div>
         <div className="platform-hero-actions">
           <Button
-            size="md"
+            className={refreshing ? 'is-spinning-icon' : ''}
+            disabled={loading || refreshing}
             kind="ghost"
+            onClick={() => fetchMetrics(true)}
             renderIcon={RefreshIcon}
-            onClick={fetchMetrics}
-            disabled={loading}
+            size="md"
           >
-            {t('platform.refresh', '刷新')}
+            {refreshing
+              ? '刷新中...'
+              : t('platform.refresh', '刷新')}
           </Button>
           <Button
-            size="md"
             kind="secondary"
+            onClick={() => navigate('/platform/namespaces')}
             renderIcon={FolderIcon}
-            onClick={() => navigate('/platform/projects')}
+            size="md"
           >
-            {t('platform.projects', '项目管理')}
+            {t('platform.namespaces', '命名空间')}
           </Button>
           <Button
-            size="md"
             kind="primary"
+            onClick={() => navigate(pipelinesPath)}
             renderIcon={RocketIcon}
-            onClick={() => navigate('/platform/pipelines')}
+            size="md"
           >
-            {t('platform.launchPipeline', '启动流水线')}
+            {t('platform.launchPipeline', 'Tekton 流水线')}
           </Button>
         </div>
       </div>
@@ -191,9 +301,9 @@ export function PlatformDashboard() {
       {error && (
         <InlineNotification
           kind="error"
-          title={t('dashboard.about.error', '发生错误')}
-          subtitle={error}
           style={{ marginBottom: '20px' }}
+          subtitle={error}
+          title={t('dashboard.about.error', '发生错误')}
         />
       )}
 
@@ -201,34 +311,48 @@ export function PlatformDashboard() {
         <Loading
           description={t(
             'platform.loading.metrics',
-            '正在同步遥测数据与流水线指标...'
+            '正在同步集群 Tekton CRD 资源与流水线指标...'
           )}
           withOverlay={false}
         />
       ) : (
         <>
-          {/* 2. Metric Stat Cards */}
+          {/* 2. Metric Stat Cards: K8s 命名空间、Tekton 流水线、任务库、K8s Secret 凭据 */}
           <div className="platform-stats-grid">
-            <div className="platform-stat-card card-indigo">
+            <div
+              className="platform-stat-card card-indigo is-clickable"
+              onClick={() => navigate('/platform/namespaces')}
+              onKeyDown={e =>
+                e.key === 'Enter' && navigate('/platform/namespaces')
+              }
+              role="button"
+              tabIndex={0}
+            >
               <div className="stat-card-header">
                 <span className="stat-label">
-                  {t('platform.stats.workspaces', '项目空间')}
+                  {t('platform.stats.namespaces', 'K8s 命名空间')}
                 </span>
                 <div className="stat-icon-wrapper">
                   <FolderIcon size={18} />
                 </div>
               </div>
-              <div className="stat-value">{metrics?.total_projects || 0}</div>
+              <div className="stat-value">{nsCount}</div>
               <div className="stat-sub">
                 <SuccessIcon size={14} style={{ color: '#10b981' }} />{' '}
-                {t('platform.stats.connectedRepos', '代码仓库集成')}
+                {t('platform.stats.namespacesSub', 'Kubernetes 资源与 RBAC 隔离空间')}
               </div>
             </div>
 
-            <div className="platform-stat-card card-violet">
+            <div
+              className="platform-stat-card card-violet is-clickable"
+              onClick={() => navigate(pipelinesPath)}
+              onKeyDown={e => e.key === 'Enter' && navigate(pipelinesPath)}
+              role="button"
+              tabIndex={0}
+            >
               <div className="stat-card-header">
                 <span className="stat-label">
-                  {t('platform.stats.pipelines', '流水线定义')}
+                  {t('platform.stats.pipelines', 'Tekton 流水线')}
                 </span>
                 <div className="stat-icon-wrapper">
                   <RocketIcon size={18} />
@@ -237,55 +361,58 @@ export function PlatformDashboard() {
               <div className="stat-value">{metrics?.total_pipelines || 0}</div>
               <div className="stat-sub">
                 <span>
-                  {t('platform.stats.crdDefinitions', 'CRD 编排规则')}
+                  {t('platform.stats.crdDefinitions', 'tekton.dev/v1 Pipeline 定义总数')}
                 </span>
               </div>
             </div>
 
-            <div className="platform-stat-card card-sky">
+            <div
+              className="platform-stat-card card-sky is-clickable"
+              onClick={() => navigate(tasksPath)}
+              onKeyDown={e => e.key === 'Enter' && navigate(tasksPath)}
+              role="button"
+              tabIndex={0}
+            >
               <div className="stat-card-header">
                 <span className="stat-label">
-                  {t('platform.stats.runs', '执行实例')}
+                  {t('platform.stats.tasks', '任务模板 (Tasks)')}
                 </span>
                 <div className="stat-icon-wrapper">
-                  <ClockIcon size={18} />
+                  <TaskIcon size={18} />
                 </div>
               </div>
-              <div className="stat-value">{metrics?.total_runs || 0}</div>
+              <div className="stat-value">{metrics?.total_tasks || 0}</div>
+              <div className="stat-sub">
+                <span>
+                  {t('platform.stats.tasksDetail', 'tekton.dev/v1 Task 原子任务总数')}
+                </span>
+              </div>
+            </div>
+
+            <div
+              className="platform-stat-card card-emerald is-clickable"
+              onClick={() => navigate('/platform/credentials')}
+              onKeyDown={e =>
+                e.key === 'Enter' && navigate('/platform/credentials')
+              }
+              role="button"
+              tabIndex={0}
+            >
+              <div className="stat-card-header">
+                <span className="stat-label">
+                  {t('platform.stats.credentials', 'K8s Secret 凭据')}
+                </span>
+                <div className="stat-icon-wrapper">
+                  <KeyIcon size={18} />
+                </div>
+              </div>
+              <div className="stat-value">{secretsCount}</div>
               <div className="stat-sub">
                 <span>
                   {t(
-                    'platform.stats.runsDetail',
-                    '{running} 个运行中, {succeeded} 个已完成',
-                    {
-                      running: metrics?.running_runs || 0,
-                      succeeded: metrics?.succeeded_runs || 0
-                    }
+                    'platform.stats.credentialsDetail',
+                    '自动挂载 ServiceAccount 的构建密钥'
                   )}
-                </span>
-              </div>
-            </div>
-
-            <div className="platform-stat-card card-emerald">
-              <div className="stat-card-header">
-                <span className="stat-label">
-                  {t('platform.stats.successRate', '构建成功率')}
-                </span>
-                <div className="stat-icon-wrapper">
-                  <SuccessIcon size={18} />
-                </div>
-              </div>
-              <div className="stat-value">
-                {metrics?.success_rate !== undefined
-                  ? `${metrics.success_rate.toFixed(1)}%`
-                  : '100%'}
-              </div>
-              <div className="stat-sub">
-                <span>
-                  {t('platform.stats.avgDuration', '平均耗时')}:{' '}
-                  {metrics?.avg_duration_seconds
-                    ? `${metrics.avg_duration_seconds.toFixed(1)}s`
-                    : t('platform.stats.instant', '秒级')}
                 </span>
               </div>
             </div>
@@ -295,12 +422,12 @@ export function PlatformDashboard() {
           <div className="platform-section-header">
             <div>
               <h2>
-                {t('platform.workflow.title', '🚀 自动化交付流程 DAG 视图')}
+                {t('platform.workflow.title', '🚀 Tekton 原生流水线标准交付链路')}
               </h2>
               <div className="section-subtitle">
                 {t(
                   'platform.workflow.subtitle',
-                  '声明式流水线阶段图谱，由 Tekton 执行引擎驱动'
+                  '声明式 Task 与 Pipeline 拓扑编排，由 Tekton Pipelines 控制器驱动'
                 )}
               </div>
             </div>
@@ -309,12 +436,12 @@ export function PlatformDashboard() {
           <div className="pipeline-dag-preview">
             <div className="dag-stage completed">
               <span style={{ color: '#10b981' }}>✓</span>{' '}
-              {t('platform.workflow.step1', '1. 代码检出 (Git Clone)')}
+              {t('platform.workflow.step1', '1. 挂载 Secret & 检出源码 (git-clone)')}
             </div>
             <span className="dag-arrow">──▶</span>
             <div className="dag-stage completed">
               <span style={{ color: '#10b981' }}>✓</span>{' '}
-              {t('platform.workflow.step2', '2. 单元测试与代码检查')}
+              {t('platform.workflow.step2', '2. 单元测试与静态扫描 (unit-test)')}
             </div>
             <span className="dag-arrow">──▶</span>
             <div className="dag-stage active">
@@ -324,15 +451,15 @@ export function PlatformDashboard() {
               >
                 ●
               </span>{' '}
-              {t('platform.workflow.step3', '3. 镜像构建与打包')}
+              {t('platform.workflow.step3', '3. 容器镜像构建推送 (kaniko / buildah)')}
             </div>
             <span className="dag-arrow">──▶</span>
             <div className="dag-stage">
-              {t('platform.workflow.step4', '4. 集群发布部署')}
+              {t('platform.workflow.step4', '4. K8s 命名空间滚动发布')}
             </div>
             <span className="dag-arrow">──▶</span>
             <div className="dag-stage">
-              {t('platform.workflow.step5', '5. 状态通知回传')}
+              {t('platform.workflow.step5', '5. Finally 结果收敛与通知')}
             </div>
           </div>
 
@@ -340,47 +467,47 @@ export function PlatformDashboard() {
           <div className="platform-section-header">
             <div>
               <h2>
-                {t('platform.recentExecutions.title', '最近流水线执行记录')}
+                {t('platform.recentExecutions.title', '最近 PipelineRun 执行记录')}
               </h2>
               <div className="section-subtitle">
                 {t(
                   'platform.recentExecutions.subtitle',
-                  '实时监控触发执行详情及步骤动作'
+                  '实时追踪集群内 Tekton PipelineRun 状态及容器输出日志流'
                 )}
               </div>
             </div>
             <Button
-              size="sm"
               kind="ghost"
+              onClick={() => navigate(pipelineRunsPath)}
               renderIcon={LaunchIcon}
-              onClick={() => navigate('/platform/pipelines')}
+              size="sm"
             >
-              {t('platform.viewAllPipelines', '查看所有流水线')}
+              {t('platform.viewAllPipelines', '查看全部执行记录')}
             </Button>
           </div>
 
           {recentRunRows.length === 0 ? (
             <div className="platform-empty-state">
               <RocketIcon className="empty-icon" />
-              <h3>{t('platform.noRunsTitle', '暂无流水线执行记录')}</h3>
+              <h3>{t('platform.noRunsTitle', '当前命名空间暂无 PipelineRun 执行记录')}</h3>
               <p>
                 {t(
                   'platform.noRunsDesc',
-                  '通过创建您的第一个流水线配置，或从 Git 仓库触发自动化构建开始体验。'
+                  '前往「Tekton 流水线」通过可视化向导组装 Task 并一键触发您的第一条 PipelineRun。'
                 )}
               </p>
               <Button
-                size="md"
                 kind="primary"
+                onClick={() => navigate(pipelinesPath)}
                 renderIcon={RocketIcon}
-                onClick={() => navigate('/platform/pipelines')}
+                size="md"
               >
-                {t('platform.launchFirst', '立即创建流水线')}
+                {t('platform.launchFirst', '前往 Tekton 流水线')}
               </Button>
             </div>
           ) : (
             <div className="platform-table-wrapper">
-              <DataTable rows={recentRunRows} headers={headers}>
+              <DataTable headers={headers} rows={recentRunRows}>
                 {({
                   rows,
                   headers: tableHeaders,
@@ -425,6 +552,41 @@ export function PlatformDashboard() {
           )}
         </>
       )}
+
+      <Modal
+        className="platform-modal"
+        modalHeading={`实时执行日志 ${
+          activeLogRun
+            ? `(${activeLogRun.pipeline_name || 'Pipeline'} · ${
+                activeLogRun.k8s_name || activeLogRun.id?.slice(0, 8)
+              })`
+            : ''
+        }`}
+        onRequestClose={closeLiveLogViewer}
+        onRequestSubmit={closeLiveLogViewer}
+        open={logModalOpen}
+        passiveModal
+      >
+        <div className="live-log-terminal">
+          <div className="terminal-status-bar">
+            <span className="terminal-dot-group">
+              <span className="tdot red" />
+              <span className="tdot yellow" />
+              <span className="tdot green" />
+            </span>
+            <span className="terminal-title">
+              {logStreaming
+                ? '● 正在实时接收容器输出流 (SSE)...'
+                : '✓ 日志流传输完毕'}
+            </span>
+          </div>
+          <pre className="terminal-body">
+            {logLines.length === 0
+              ? '正在连接日志流服务器...\n'
+              : logLines.join('\n')}
+          </pre>
+        </div>
+      </Modal>
     </div>
   );
 }

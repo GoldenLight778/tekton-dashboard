@@ -1,4 +1,4 @@
-# Copyright 2019-2025 The Tekton Authors
+# Copyright 2019-2026 The Tekton Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,22 +15,34 @@
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: tekton-dashboard-backend-view
+  name: tekton-devops-admin
   labels:
     app.kubernetes.io/component: dashboard
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-dashboard
+    app.kubernetes.io/managed-by: tekton-devops-dashboard
+    tekton-devops-dashboard: "true"
+    rbac.tekton-devops.io/role-type: "admin"
+  annotations:
+    rbac.tekton-devops.io/display-name: "平台管理员"
+    rbac.tekton-devops.io/description: "拥有 DevOps 平台所有流水线操作权限及带 tekton-devops-dashboard 标签的集群 RBAC 管理权限"
+    rbac.tekton-devops.io/label-selector-scope: "tekton-devops-dashboard=true"
 rules:
-  - apiGroups:
-      - apiextensions.k8s.io
-    resources:
-      - customresourcedefinitions
-    verbs:
-      - get
-      - list
-  - apiGroups:
-      - security.openshift.io
-    resources:
-      - securitycontextconstraints
-    verbs:
-      - use
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets", "serviceaccounts", "configmaps", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["tekton.dev"]
+    resources: ["tasks", "taskruns", "pipelines", "pipelineruns", "stepactions", "customruns", "runs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: ["triggers.tekton.dev"]
+    resources: ["eventlisteners", "triggers", "triggerbindings", "clustertriggerbindings", "triggertemplates", "interceptors", "clusterinterceptors"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: ["dashboard.tekton.dev"]
+    resources: ["extensions"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "clusterroles", "rolebindings", "clusterrolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "bind", "escalate"]

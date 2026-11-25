@@ -218,7 +218,7 @@ export function ImportResources() {
       </h1>
       {submitError && (
         <InlineNotification
-          iconDescription={intl.formatMessage({
+          statusIconDescription={intl.formatMessage({
             id: 'dashboard.notification.clear',
             defaultMessage: 'Clear notification'
           })}
@@ -419,12 +419,14 @@ export function ImportResources() {
             </Link>
           </ActionableNotification>
         )}
-        <Button kind="primary" onClick={handleSubmit}>
-          {intl.formatMessage({
-            id: 'dashboard.importResources.importApplyButton',
-            defaultMessage: 'Import'
-          })}
-        </Button>
+        <div className="platform-form-actions">
+          <Button kind="primary" onClick={handleSubmit} size="md">
+            {intl.formatMessage({
+              id: 'dashboard.importResources.importApplyButton',
+              defaultMessage: 'Import'
+            })}
+          </Button>
+        </div>
       </Form>
     </div>
   );

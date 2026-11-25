@@ -69,7 +69,7 @@ export const ListPageLayout = ({
       )}
       {error && (
         <InlineNotification
-          iconDescription={intl.formatMessage({
+          statusIconDescription={intl.formatMessage({
             id: 'dashboard.notification.clear',
             defaultMessage: 'Clear notification'
           })}

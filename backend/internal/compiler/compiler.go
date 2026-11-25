@@ -46,6 +46,56 @@ func Parse(content string) (*PipelineSpec, error) {
 		if err := json.Unmarshal([]byte(content), &spec); err == nil && len(spec.Stages) > 0 {
 			return &spec, nil
 		}
+		// Support native Tekton Pipeline JSON wrapper: {"namespace": "...", "spec": {"tasks": [...]}}
+		var nativeWrapper struct {
+			Name string `json:"name"`
+			Spec struct {
+				Description string                   `json:"description"`
+				Tasks       []map[string]interface{} `json:"tasks"`
+			} `json:"spec"`
+		}
+		if err := json.Unmarshal([]byte(content), &nativeWrapper); err == nil && len(nativeWrapper.Spec.Tasks) > 0 {
+			var tasks []TaskSpec
+			for idx, pt := range nativeWrapper.Spec.Tasks {
+				tName, _ := pt["name"].(string)
+				if tName == "" {
+					tName = fmt.Sprintf("task-%d", idx+1)
+				}
+				img := "alpine:latest"
+				scr := fmt.Sprintf("echo 'Executing Tekton Task: %s'", tName)
+				if tref, ok := pt["taskRef"].(map[string]interface{}); ok {
+					if refName, ok := tref["name"].(string); ok && refName != "" {
+						scr = fmt.Sprintf("echo 'Running referenced Tekton Task [%s] in step [%s]'", refName, tName)
+					}
+				}
+				if tSpec, ok := pt["taskSpec"].(map[string]interface{}); ok {
+					if steps, ok := tSpec["steps"].([]interface{}); ok && len(steps) > 0 {
+						if firstStep, ok := steps[0].(map[string]interface{}); ok {
+							if sImg, ok := firstStep["image"].(string); ok && sImg != "" {
+								img = sImg
+							}
+							if sScr, ok := firstStep["script"].(string); ok && sScr != "" {
+								scr = sScr
+							}
+						}
+					}
+				}
+				tasks = append(tasks, TaskSpec{
+					Name:   tName,
+					Image:  img,
+					Script: scr,
+				})
+			}
+			return &PipelineSpec{
+				Name: nativeWrapper.Name,
+				Stages: []StageSpec{
+					{
+						Name:  "tekton-pipeline",
+						Tasks: tasks,
+					},
+				},
+			}, nil
+		}
 	}
 
 	// Try YAML

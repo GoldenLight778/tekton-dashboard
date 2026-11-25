@@ -120,6 +120,16 @@ export async function request(uri, options = defaultOptions, stream) {
     ...options.headers,
     ...csrfHeader
   };
+  try {
+    const token =
+      typeof localStorage !== 'undefined' &&
+      localStorage.getItem('devops_platform_token');
+    if (token && !headers['X-Platform-Token']) {
+      headers['X-Platform-Token'] = token;
+    }
+  } catch {
+    // ignore storage access issues
+  }
 
   return fetch(uri, {
     ...defaultOptions,

@@ -1,4 +1,4 @@
-# Copyright 2019-2024 The Tekton Authors
+# Copyright 2019-2026 The Tekton Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,17 +15,24 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: tekton-dashboard-backend-view
+  name: tekton-devops-admin-binding
   labels:
     app.kubernetes.io/component: dashboard
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-dashboard
-    rbac.dashboard.tekton.dev/subject: tekton-dashboard
+    app.kubernetes.io/managed-by: tekton-devops-dashboard
+    tekton-devops-dashboard: "true"
 subjects:
+  - kind: User
+    name: admin
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: tekton-devops:admin
+    apiGroup: rbac.authorization.k8s.io
   - kind: ServiceAccount
     name: tekton-dashboard
     namespace: tekton-pipelines
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: tekton-dashboard-backend-view
+  name: tekton-devops-admin

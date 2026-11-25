@@ -31,6 +31,7 @@ type PipelineRunRepository interface {
 	GetByID(ctx context.Context, id string) (*PipelineRun, error)
 	ListByPipeline(ctx context.Context, pipelineID string, page, pageSize int) ([]PipelineRun, int, error)
 	ListByProject(ctx context.Context, projectID string, page, pageSize int) ([]PipelineRun, int, error)
+	ListAll(ctx context.Context) ([]PipelineRun, error)
 	UpdateStatus(ctx context.Context, id, status string, startedAt, finishedAt *time.Time) error
 }
 
@@ -180,6 +181,36 @@ func (r *SQLitePipelineRunRepository) ListByProject(ctx context.Context, project
 
 	return runs, total, nil
 }
+
+func (r *SQLitePipelineRunRepository) ListAll(ctx context.Context) ([]PipelineRun, error) {
+	query := `SELECT id, pipeline_id, k8s_pipelinerun_name, namespace, status, triggered_by, started_at, finished_at, created_at 
+	          FROM pipeline_runs ORDER BY created_at DESC LIMIT 100`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all pipeline runs: %w", err)
+	}
+	defer rows.Close()
+
+	var runs []PipelineRun
+	for rows.Next() {
+		var run PipelineRun
+		var k8sName sql.NullString
+		var started, finished sql.NullTime
+		if err := rows.Scan(&run.ID, &run.PipelineID, &k8sName, &run.Namespace, &run.Status, &run.TriggeredBy, &started, &finished, &run.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan pipeline run: %w", err)
+		}
+		run.K8sPipelineRunName = k8sName.String
+		if started.Valid {
+			run.StartedAt = &started.Time
+		}
+		if finished.Valid {
+			run.FinishedAt = &finished.Time
+		}
+		runs = append(runs, run)
+	}
+	return runs, nil
+}
+
 
 func (r *SQLitePipelineRunRepository) UpdateStatus(ctx context.Context, id, status string, startedAt, finishedAt *time.Time) error {
 	query := `UPDATE pipeline_runs SET status = ?, started_at = COALESCE(?, started_at), finished_at = COALESCE(?, finished_at) WHERE id = ?`

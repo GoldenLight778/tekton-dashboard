@@ -92,7 +92,8 @@ func BuildClientBundle(cfg config.KubernetesConfig, logger *zap.Logger) (*Client
 	if cfg.Insecure {
 		restConfig.Insecure = true
 	}
-
+    restConfig.QPS = 50
+	restConfig.Burst = 100
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kubernetes clientset: %w", err)

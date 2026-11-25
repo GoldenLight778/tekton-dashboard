@@ -86,13 +86,61 @@ export function PlatformPipelines() {
   const [dslContent, setDslContent] = useState(DEFAULT_DSL_TEMPLATE);
   const [submitting, setSubmitting] = useState(false);
 
+  // Live Log Modal State
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [activeLogRun, setActiveLogRun] = useState(null);
+  const [logLines, setLogLines] = useState([]);
+  const [logStreaming, setLogStreaming] = useState(false);
+
+  const openLiveLogViewer = (run, pipelineName) => {
+    if (window._activePipelineLogES) {
+      window._activePipelineLogES.close();
+      window._activePipelineLogES = null;
+    }
+    setActiveLogRun({ ...run, pipelineName });
+    setLogLines([]);
+    setLogModalOpen(true);
+    setLogStreaming(true);
+
+    const es = new EventSource(`/api/platform/v1/runs/${run.id}/logs/sse`);
+    es.onmessage = event => {
+      if (event.data) {
+        setLogLines(prev => [...prev, event.data]);
+      }
+    };
+    es.onerror = () => {
+      setLogStreaming(false);
+      es.close();
+    };
+    window._activePipelineLogES = es;
+  };
+
+  const closeLiveLogViewer = () => {
+    if (window._activePipelineLogES) {
+      window._activePipelineLogES.close();
+      window._activePipelineLogES = null;
+    }
+    setLogStreaming(false);
+    setLogModalOpen(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (window._activePipelineLogES) {
+        window._activePipelineLogES.close();
+        window._activePipelineLogES = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const loadProjects = async () => {
       try {
         const projs = await getProjects();
-        setProjects(projs || []);
-        if (!selectedProjectId && projs?.length > 0) {
-          setSelectedProjectId(projs[0].id);
+        const list = Array.isArray(projs) ? projs : projs?.items || [];
+        setProjects(list);
+        if (!selectedProjectId && list.length > 0) {
+          setSelectedProjectId(list[0].id);
         }
       } catch (err) {
         setError(
@@ -112,7 +160,8 @@ export function PlatformPipelines() {
       setLoading(true);
       setError(null);
       const res = await getPipelines(projId);
-      setPipelines(res?.items || []);
+      const pipeList = Array.isArray(res) ? res : res?.items || [];
+      setPipelines(pipeList);
     } catch (err) {
       setError(
         err.message || t('platform.error.fetchPipelines', '加载流水线列表失败')
@@ -160,7 +209,7 @@ export function PlatformPipelines() {
     }
   };
 
-  const handleTriggerRun = async pipelineId => {
+  const handleTriggerRun = async (pipelineId, pipelineName) => {
     try {
       setError(null);
       const run = await triggerPipelineRun(pipelineId);
@@ -171,6 +220,9 @@ export function PlatformPipelines() {
           { id: run.id?.slice(0, 8) }
         )
       );
+      if (run?.id) {
+        openLiveLogViewer(run, pipelineName);
+      }
     } catch (err) {
       setError(
         err.message || t('platform.error.triggerRun', '触发流水线执行失败')
@@ -202,7 +254,10 @@ export function PlatformPipelines() {
     { key: 'actions', header: t('platform.table.actions', '操作') }
   ];
 
-  const rows = pipelines.map(p => ({
+  const pipelineList = Array.isArray(pipelines)
+    ? pipelines
+    : pipelines?.items || [];
+  const rows = pipelineList.map(p => ({
     id: p.id,
     name: (
       <div>
@@ -221,7 +276,7 @@ export function PlatformPipelines() {
           size="sm"
           kind="primary"
           renderIcon={PlayIcon}
-          onClick={() => handleTriggerRun(p.id)}
+          onClick={() => handleTriggerRun(p.id, p.name)}
         >
           {t('platform.run', '运行')}
         </Button>
@@ -288,7 +343,10 @@ export function PlatformPipelines() {
               value={selectedProjectId}
               onChange={e => setSelectedProjectId(e.target.value)}
             >
-              {projects.map(p => (
+              {(Array.isArray(projects)
+                ? projects
+                : projects?.items || []
+              ).map(p => (
                 <SelectItem key={p.id} value={p.id} text={p.name} />
               ))}
             </Select>
@@ -426,6 +484,39 @@ export function PlatformPipelines() {
               fontSize: '13px'
             }}
           />
+        </div>
+      </Modal>
+
+      <Modal
+        className="platform-modal"
+        modalHeading={`实时执行日志 ${
+          activeLogRun
+            ? `(${activeLogRun.pipelineName || 'Pipeline'} #${activeLogRun.id?.slice(0, 8)})`
+            : ''
+        }`}
+        onRequestClose={closeLiveLogViewer}
+        onRequestSubmit={closeLiveLogViewer}
+        open={logModalOpen}
+        passiveModal
+      >
+        <div className="live-log-terminal">
+          <div className="terminal-status-bar">
+            <span className="terminal-dot-group">
+              <span className="tdot red" />
+              <span className="tdot yellow" />
+              <span className="tdot green" />
+            </span>
+            <span className="terminal-title">
+              {logStreaming
+                ? '● 正在实时接收容器输出流 (SSE)...'
+                : '✓ 日志流传输完毕'}
+            </span>
+          </div>
+          <pre className="terminal-body">
+            {logLines.length === 0
+              ? '正在连接日志流服务器...\n'
+              : logLines.join('\n')}
+          </pre>
         </div>
       </Modal>
     </div>

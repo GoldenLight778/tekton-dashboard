@@ -18,7 +18,10 @@ export function useExtensions(params, queryConfig) {
     group: dashboardAPIGroup,
     kind: 'extensions',
     params,
-    queryConfig,
+    queryConfig: {
+      disableWebSocket: true,
+      ...queryConfig
+    },
     version: 'v1alpha1'
   });
 

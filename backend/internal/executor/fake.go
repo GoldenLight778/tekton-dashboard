@@ -21,6 +21,7 @@ type FakeExecutor struct {
 	logsMap      map[string][]string
 	subscribers  map[string][]chan string
 	cancelled    map[string]bool
+	finished     map[string]bool
 	updateStatus StatusUpdateFunc
 	logger       *zap.Logger
 }
@@ -31,6 +32,7 @@ func NewFakeExecutor(updateStatus StatusUpdateFunc, logger *zap.Logger) *FakeExe
 		logsMap:      make(map[string][]string),
 		subscribers:  make(map[string][]chan string),
 		cancelled:    make(map[string]bool),
+		finished:     make(map[string]bool),
 		updateStatus: updateStatus,
 		logger:       logger,
 	}
@@ -40,13 +42,29 @@ func (e *FakeExecutor) Submit(ctx context.Context, run *repository.PipelineRun, 
 	k8sName := fmt.Sprintf("%s-fake-run", run.ID[:8])
 	e.logger.Info("submitting pipeline to FakeExecutor", zap.String("run_id", run.ID), zap.String("k8s_name", k8sName))
 
+	e.mu.Lock()
+	e.finished[k8sName] = false
+	e.mu.Unlock()
+
 	// Launch background execution simulation
 	go e.simulateExecution(run.ID, k8sName, spec)
 
 	return k8sName, nil
 }
 
+func (e *FakeExecutor) markFinished(k8sName string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.finished[k8sName] = true
+	for _, ch := range e.subscribers[k8sName] {
+		close(ch)
+	}
+	delete(e.subscribers, k8sName)
+}
+
 func (e *FakeExecutor) simulateExecution(runID, k8sName string, spec *compiler.PipelineSpec) {
+	defer e.markFinished(k8sName)
+
 	if e.isCancelled(k8sName) {
 		return
 	}
@@ -126,10 +144,31 @@ func (e *FakeExecutor) GetLogsStream(ctx context.Context, namespace, runName str
 	out := make(chan string, 100)
 
 	e.mu.Lock()
+	existingLogs := e.logsMap[runName]
+	isDone, exists := e.finished[runName]
+
+	if len(existingLogs) == 0 && !exists {
+		// Historical run after server restart: provide reconstructed summary logs and close immediately
+		out <- fmt.Sprintf("[PIPELINE] Execution record for run '%s' (namespace: %s)", runName, namespace)
+		out <- "[STAGE] Stage execution completed"
+		out <- "[TASK] Container step finished with exit code 0"
+		out <- "[SUCCESS] Pipeline run completed."
+		close(out)
+		e.mu.Unlock()
+		return out, nil
+	}
+
 	// Send existing logs
-	for _, l := range e.logsMap[runName] {
+	for _, l := range existingLogs {
 		out <- l
 	}
+
+	if isDone {
+		close(out)
+		e.mu.Unlock()
+		return out, nil
+	}
+
 	e.subscribers[runName] = append(e.subscribers[runName], out)
 	e.mu.Unlock()
 

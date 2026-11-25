@@ -104,3 +104,44 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 func (s *AuthService) GetUserByID(ctx context.Context, id string) (*repository.User, error) {
 	return s.userRepo.GetByID(ctx, id)
 }
+
+// ListUsers returns all registered users
+func (s *AuthService) ListUsers(ctx context.Context) ([]repository.User, error) {
+	return s.userRepo.List(ctx)
+}
+
+// CreateUser registers a new platform user with hashed password and role
+func (s *AuthService) CreateUser(ctx context.Context, username, password, role string) (*repository.User, error) {
+	if existing, err := s.userRepo.GetByUsername(ctx, username); err == nil && existing != nil {
+		return nil, repository.ErrUserAlreadyExists
+	}
+	hash, err := crypto.HashPassword(password)
+	if err != nil {
+		return nil, err
+	}
+	if role == "" {
+		role = "editor"
+	}
+	u := &repository.User{
+		ID:           uuid.New().String(),
+		Username:     username,
+		PasswordHash: hash,
+		Role:         role,
+		CreatedAt:    time.Now().UTC(),
+		UpdatedAt:    time.Now().UTC(),
+	}
+	if err := s.userRepo.Create(ctx, u); err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+// UpdateUserRole updates a user's default cluster role
+func (s *AuthService) UpdateUserRole(ctx context.Context, id, role string) error {
+	return s.userRepo.UpdateRole(ctx, id, role)
+}
+
+// DeleteUser removes a user by ID
+func (s *AuthService) DeleteUser(ctx context.Context, id string) error {
+	return s.userRepo.Delete(ctx, id)
+}

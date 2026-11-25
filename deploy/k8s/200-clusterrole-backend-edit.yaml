@@ -1,4 +1,4 @@
-# Copyright 2019-2024 The Tekton Authors
+# Copyright 2019-2026 The Tekton Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,26 +15,30 @@
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: tekton-dashboard-backend-edit
+  name: tekton-devops-worker
   labels:
     app.kubernetes.io/component: dashboard
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-dashboard
+    app.kubernetes.io/managed-by: tekton-devops-dashboard
+    tekton-devops-dashboard: "true"
+    rbac.tekton-devops.io/role-type: "worker"
+  annotations:
+    rbac.tekton-devops.io/display-name: "工作人员"
+    rbac.tekton-devops.io/description: "指定 Namespace 内的流水线、任务、触发器与构建凭据操作权限"
 rules:
-  - apiGroups:
-      - ''
-    resources:
-      - serviceaccounts
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - dashboard.tekton.dev
-    resources:
-      - extensions
-    verbs:
-      - create
-      - update
-      - delete
-      - patch
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets", "serviceaccounts", "configmaps", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["tekton.dev"]
+    resources: ["tasks", "taskruns", "pipelines", "pipelineruns", "stepactions", "customruns", "runs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: ["triggers.tekton.dev"]
+    resources: ["eventlisteners", "triggers", "triggerbindings", "triggertemplates", "interceptors"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["dashboard.tekton.dev"]
+    resources: ["extensions"]
+    verbs: ["get", "list", "watch"]

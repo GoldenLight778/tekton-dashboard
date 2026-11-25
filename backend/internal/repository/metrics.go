@@ -11,6 +11,8 @@ import (
 type DashboardMetrics struct {
 	TotalProjects      int                    `json:"total_projects"`
 	TotalPipelines     int                    `json:"total_pipelines"`
+	TotalTasks         int                    `json:"total_tasks"`
+	TotalCredentials   int                    `json:"total_credentials"`
 	TotalRuns          int                    `json:"total_runs"`
 	SucceededRuns      int                    `json:"succeeded_runs"`
 	FailedRuns         int                    `json:"failed_runs"`
@@ -71,6 +73,12 @@ func (r *SQLiteMetricsRepository) GetDashboardMetrics(ctx context.Context) (*Das
 	if err := r.db.QueryRowContext(ctx, `SELECT count(*) FROM pipelines`).Scan(&metrics.TotalPipelines); err != nil {
 		return nil, fmt.Errorf("failed to count pipelines: %w", err)
 	}
+
+	// 2b. Total tasks
+	_ = r.db.QueryRowContext(ctx, `SELECT count(*) FROM tasks`).Scan(&metrics.TotalTasks)
+
+	// 2c. Total credentials
+	_ = r.db.QueryRowContext(ctx, `SELECT count(*) FROM credentials`).Scan(&metrics.TotalCredentials)
 
 	// 3. Status breakdown from pipeline_runs
 	rows, err := r.db.QueryContext(ctx, `SELECT status, count(*) FROM pipeline_runs GROUP BY status`)

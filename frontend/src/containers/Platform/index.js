@@ -15,3 +15,6 @@ export { PlatformDashboard } from './PlatformDashboard';
 export { PlatformProjects } from './PlatformProjects';
 export { PlatformPipelines } from './PlatformPipelines';
 export { PlatformCredentials } from './PlatformCredentials';
+export { PlatformLogin } from './PlatformLogin';
+export { PlatformRBAC } from './PlatformRBAC';
+export { PlatformNamespaces } from './PlatformNamespaces';

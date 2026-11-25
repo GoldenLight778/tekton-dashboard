@@ -11,227 +11,707 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-@use '@carbon/react/scss/config' as *;
-@use '@carbon/react/scss/spacing' as *;
-@use '@carbon/react/scss/theme' as *;
-@use '@carbon/react/scss/type' as *;
-
 $tkn--breakpoint-md: 672px;
 $tkn--breakpoint-lg: 1056px;
-$tkn--breakpoint-max: 1584px;
-
-:root {
-  --tkn-grid-columns: 4;
-  --tkn-grid-column-size: 1fr;
-  --tkn-grid-gutter: 2rem;
-  --tkn-grid-margin: 0;
-
-  @media (min-width: $tkn--breakpoint-md) {
-    --tkn-grid-columns: 8;
-    --tkn-grid-margin: 1rem;
-  }
-
-  @media (min-width: $tkn--breakpoint-lg) {
-    --tkn-grid-columns: 16;
-  }
-
-  @media (min-width: $tkn--breakpoint-max) {
-    --tkn-grid-margin: 1.5rem;
-  }
-}
-
-.tkn--css-grid {
-  display: grid;
-  max-inline-size: 99rem;
-  padding-inline: calc(var(--tkn-grid-margin) + var(--tkn-grid-gutter) / 2);
-  margin-inline-end: auto;
-  column-gap: var(--tkn-grid-gutter);
-  grid-template-columns: repeat(
-    var(--tkn-grid-columns),
-    minmax(0, var(--tkn-grid-column-size))
-  );
-}
 
 .tkn--about {
-  margin-block-start: -1.5rem;
-  margin-block-end: 0;
-  margin-inline: -2rem;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 8px 4px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 
-  .tkn--css-grid {
-    row-gap: calc(var(--tkn-grid-gutter) / 2);
-  }
-
-  .tkn--about-header {
-    background-color: $layer;
-    block-size: 15rem;
+  // --- 1. Modern Hero Card Header ---
+  .tkn--about-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 58%, #312e81 100%);
+    border-radius: 16px;
+    padding: 32px 36px;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 28px;
+    box-shadow: 0 12px 30px -10px rgba(15, 23, 42, 0.25);
+    position: relative;
     overflow: hidden;
 
-    header {
-      grid-column: 2 / span 2;
+    @media (max-width: $tkn--breakpoint-md) {
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 24px 20px;
+    }
 
-      @media (min-width: $tkn--breakpoint-md) {
-        grid-column: 2 / span 5;
-      }
+    .about-hero-text {
+      max-width: 780px;
+      z-index: 1;
 
-      @media (min-width: $tkn--breakpoint-lg) {
-        grid-column: 2 / span 6;
+      .about-hero-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 14px;
+
+        .hero-pill {
+          font-size: 0.7rem;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          padding: 4px 10px;
+          border-radius: 999px;
+
+          &.pill-primary {
+            background: rgba(56, 189, 248, 0.18);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            color: #7dd3fc;
+          }
+
+          &.pill-rbac {
+            background: rgba(99, 102, 241, 0.25);
+            border: 1px solid rgba(129, 140, 248, 0.4);
+            color: #c7d2fe;
+          }
+        }
       }
 
       h1 {
-        @include type-style('heading-04');
-        color: $text-primary;
-        margin-block-start: 2rem;
-        margin-block-end: 1rem;
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #ffffff;
+        margin: 0 0 10px 0;
+        letter-spacing: -0.01em;
       }
 
       p {
-        @include type-style('body-01');
-        color: $text-secondary;
+        font-size: 0.925rem;
+        line-height: 1.65;
+        color: #cbd5e1;
+        margin: 0;
       }
     }
 
-    .tkn--logo {
-      block-size: 30rem;
-      margin-block-start: -2rem;
-      margin-inline-end: -2rem;
-      grid-column: span 2 / -1;
+    .about-hero-logo-box {
+      flex-shrink: 0;
+      width: 132px;
+      height: 132px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12);
 
-      @media (min-width: $tkn--breakpoint-lg) {
-        grid-column: span 6 / -1;
-      }
-    }
-  }
-
-  section {
-    margin-block-start: 2rem;
-
-    &::after {
-      content: '';
-      display: block;
-      grid-column: 1 / 2;
-      grid-row: 1 / 5;
-
-      @media (min-width: $tkn--breakpoint-md) {
-        grid-row: 1 / 4;
-      }
-
-      @media (min-width: $tkn--breakpoint-lg) {
-        grid-row: 1 / 3;
-      }
-    }
-
-    &.tkn--about-docs {
-      margin-block-start: 3rem;
-
-      &::after {
-        grid-row: 1 / 6;
-
-        @media (min-width: $tkn--breakpoint-lg) {
-          grid-row: 1 / 4;
-        }
-      }
-    }
-
-    header {
-      grid-column: 2 / -1;
-
-      h2.tkn--section-title {
-        @include type-style('heading-03');
-        color: $text-secondary;
+      .tkn--logo {
+        width: 100%;
+        height: 100%;
       }
     }
   }
 
-  .#{$prefix}--tile {
+  // --- Shared Section Header ---
+  .tkn--about-section {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    gap: 16px;
 
-    min-block-size: 14rem;
-    grid-column-end: span 2;
-    margin-inline-start: -1rem;
+    .about-section-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
 
-    @media (min-width: $tkn--breakpoint-md) {
-      grid-column-end: span 3;
-    }
+      h2.tkn--section-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 0 0 4px 0;
+      }
 
-    @media (min-width: $tkn--breakpoint-lg) {
-      grid-column-end: span 5;
-    }
+      .about-section-subtitle {
+        font-size: 0.85rem;
+        color: #64748b;
+        margin: 0;
+        line-height: 1.5;
 
-    &:first-of-type {
-      grid-row-start: 2;
-      grid-column-start: 2;
-    }
-
-    h3 {
-      @include type-style('heading-01');
-      color: $text-primary;
-      margin-block-end: 1rem;
-    }
-
-    dt {
-      @include type-style('label-01');
-      color: $text-secondary;
-      margin-block-end: 0.25rem;
-    }
-
-    dd {
-      @include type-style('body-compact-01');
-      color: $text-primary;
-      margin-block-end: $spacing-05;
-
-      &:last-child {
-        margin-block-end: $spacing-03;
+        code {
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          background: #eef2ff;
+          color: #4338ca;
+          padding: 1px 6px;
+          border-radius: 4px;
+          font-size: 0.8rem;
+        }
       }
     }
+  }
 
-    &.tkn--tile--docs {
-      .tkn--about-pictogram {
+  // --- 2. Modern Environment Status Cards ---
+  .about-env-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 18px;
+
+    .about-env-card {
+      background: #ffffff !important;
+      border: 1px solid #e2e8f0 !important;
+      border-radius: 12px !important;
+      padding: 20px 22px !important;
+      min-height: 185px !important;
+      margin: 0 !important;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+
+      &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: #4f46e5;
+      }
+
+      &.card-indigo::before {
+        background: linear-gradient(90deg, #4f46e5, #6366f1);
+      }
+
+      &.card-violet::before {
+        background: linear-gradient(90deg, #7c3aed, #8b5cf6);
+      }
+
+      &.card-emerald::before {
+        background: linear-gradient(90deg, #059669, #10b981);
+      }
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px -6px rgba(15, 23, 42, 0.08);
+      }
+
+      .env-card-top {
         display: flex;
-        justify-content: center;
-        // pull background out to edges of tile but leave gap below
-        margin-block-start: -1rem;
-        margin-block-end: 1rem;
-        margin-inline: -1rem;
-        padding-block: 3rem;
-        padding-inline: 0;
-        background-color: $background-inverse;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #f1f5f9;
 
-        svg {
-          fill: $icon-inverse;
-          inline-size: clamp(48px, 20%, 64px);
+        .env-component-tag {
+          display: block;
+          font-size: 0.68rem;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          color: #64748b;
+          margin-bottom: 2px;
+        }
+
+        h3 {
+          font-size: 1.15rem;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0;
+        }
+
+        .env-status-pill {
+          font-size: 0.72rem;
+          font-weight: 600;
+          padding: 3px 10px;
+          border-radius: 999px;
+          background: #dcfce7;
+          color: #15803d;
+          white-space: nowrap;
         }
       }
 
-      .tkn--about-docs-description {
-        display: flex;
-        flex-direction: column;
+      dl.env-meta-list {
+        margin: 0;
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        row-gap: 8px;
+        column-gap: 12px;
+        align-items: center;
+
+        dt {
+          font-size: 0.78rem;
+          font-weight: 600;
+          color: #64748b;
+          margin: 0;
+        }
+
+        dd {
+          font-size: 0.82rem;
+          font-weight: 600;
+          color: #1e293b;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          padding: 2px 8px;
+          border-radius: 6px;
+          margin: 0;
+          justify-self: start;
+        }
+      }
+    }
+  }
+
+  // --- 3. Mind Map & Interactive Pipeline Tutorial Section ---
+  .about-mindmap-board {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 26px 28px;
+    display: grid;
+    grid-template-columns: 230px 36px 1fr;
+    align-items: center;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+
+    @media (max-width: $tkn--breakpoint-lg) {
+      grid-template-columns: 1fr;
+      gap: 20px;
+      padding: 20px;
+
+      .mindmap-trunk-connector {
+        display: none;
+      }
+    }
+
+    .mindmap-root-node {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      color: #ffffff;
+      padding: 20px 18px;
+      border-radius: 12px;
+      border: 1px solid #334155;
+      box-shadow: 0 8px 20px -4px rgba(15, 23, 42, 0.25);
+
+      .node-badge {
+        display: inline-block;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: rgba(56, 189, 248, 0.18);
+        color: #38bdf8;
+        margin-bottom: 8px;
       }
 
       h3 {
-        margin-block-end: 1rem;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #ffffff;
+        margin: 0 0 6px 0;
       }
 
       p {
-        @include type-style('body-compact-01');
-        color: $text-primary;
-        margin-block-end: 1rem;
-        min-block-size: 2rem;
+        font-size: 0.775rem;
+        color: #94a3b8;
+        margin: 0;
+        line-height: 1.45;
+      }
+    }
+
+    .mindmap-trunk-connector {
+      width: 100%;
+      height: 80%;
+      position: relative;
+
+      &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        width: 50%;
+        height: 2px;
+        background: #cbd5e1;
       }
 
-      .tkn--about-arrow {
-        align-self: end;
-        flex-shrink: 0;
+      &::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 10%;
+        bottom: 10%;
+        width: 50%;
+        border-left: 2px solid #cbd5e1;
+        border-top: 2px solid #cbd5e1;
+        border-bottom: 2px solid #cbd5e1;
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+      }
+    }
+
+    .mindmap-branches-col {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .mindmap-branch {
+      display: grid;
+      grid-template-columns: 205px 1fr;
+      align-items: stretch;
+      gap: 14px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      transition: transform 140ms ease, box-shadow 140ms ease;
+
+      &:hover {
+        transform: translateX(2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      }
+
+      @media (max-width: $tkn--breakpoint-md) {
+        grid-template-columns: 1fr;
+      }
+
+      .branch-main-node {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+
+        .branch-step {
+          font-size: 0.7rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin-bottom: 4px;
+        }
+
+        h4 {
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: #0f172a;
+          margin: 0;
+        }
+      }
+
+      .branch-children {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+
+        @media (max-width: $tkn--breakpoint-md) {
+          grid-template-columns: 1fr;
+        }
+
+        .leaf-node {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 7px;
+          padding: 10px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+
+          strong {
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: #1e293b;
+          }
+
+          span {
+            font-size: 0.75rem;
+            color: #64748b;
+            line-height: 1.4;
+          }
+        }
+      }
+
+      &.branch-indigo {
+        border-color: rgba(99, 102, 241, 0.25);
+        background: rgba(99, 102, 241, 0.03);
+        .branch-step {
+          color: #4f46e5;
+        }
+        .branch-main-node {
+          border-color: rgba(99, 102, 241, 0.35);
+        }
+      }
+
+      &.branch-sky {
+        border-color: rgba(14, 165, 233, 0.25);
+        background: rgba(14, 165, 233, 0.03);
+        .branch-step {
+          color: #0284c7;
+        }
+        .branch-main-node {
+          border-color: rgba(14, 165, 233, 0.35);
+        }
+      }
+
+      &.branch-violet {
+        border-color: rgba(139, 92, 246, 0.25);
+        background: rgba(139, 92, 246, 0.03);
+        .branch-step {
+          color: #7c3aed;
+        }
+        .branch-main-node {
+          border-color: rgba(139, 92, 246, 0.35);
+        }
+      }
+
+      &.branch-emerald {
+        border-color: rgba(16, 185, 129, 0.25);
+        background: rgba(16, 185, 129, 0.03);
+        .branch-step {
+          color: #059669;
+        }
+        .branch-main-node {
+          border-color: rgba(16, 185, 129, 0.35);
+        }
       }
     }
   }
 
-  .tkn--about--content {
-    display: flex;
+  .about-tutorial-grid {
+    display: grid;
+    grid-template-columns: 1.08fr 0.92fr;
+    gap: 20px;
 
-    .tkn--about--tables {
-      flex-grow: 1;
+    @media (max-width: $tkn--breakpoint-lg) {
+      grid-template-columns: 1fr;
+    }
+
+    .about-tutorial-steps {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 24px 28px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+
+      h3 {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 0 0 18px 0;
+      }
+
+      .tutorial-step-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+
+        li {
+          display: flex;
+          align-items: flex-start;
+          gap: 14px;
+
+          .step-num {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: #4f46e5;
+            color: #ffffff;
+            font-size: 0.775rem;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 2px;
+          }
+
+          .step-body {
+            strong {
+              display: block;
+              font-size: 0.875rem;
+              font-weight: 600;
+              color: #0f172a;
+              margin-bottom: 4px;
+            }
+
+            p {
+              font-size: 0.8125rem;
+              color: #475569;
+              margin: 0;
+              line-height: 1.55;
+
+              code {
+                font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                background: #eef2ff;
+                padding: 1px 6px;
+                border-radius: 4px;
+                font-size: 0.775rem;
+                color: #4338ca;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    .about-tutorial-yaml {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+
+      .yaml-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 18px;
+        background: #1e293b;
+        border-bottom: 1px solid #334155;
+        color: #e2e8f0;
+        font-size: 0.8125rem;
+        font-weight: 600;
+
+        .yaml-copy-btn {
+          appearance: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.73rem;
+          font-weight: 600;
+          padding: 4px 10px;
+          border-radius: 6px;
+          border: 1px solid rgba(56, 189, 248, 0.35);
+          background: rgba(56, 189, 248, 0.14);
+          color: #38bdf8;
+          cursor: pointer;
+          transition: all 0.15s ease;
+
+          &:hover {
+            background: rgba(56, 189, 248, 0.28);
+            color: #ffffff;
+          }
+        }
+      }
+
+      .yaml-code-block {
+        margin: 0;
+        padding: 16px 18px;
+        font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.76rem;
+        line-height: 1.55;
+        color: #38bdf8;
+        overflow-x: auto;
+        max-height: 360px;
+      }
+    }
+  }
+
+  // --- 4. Modern Documentation & Ecosystem Resource Cards ---
+  .about-docs-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+
+    @media (max-width: $tkn--breakpoint-lg) {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    @media (max-width: $tkn--breakpoint-md) {
+      grid-template-columns: 1fr;
+    }
+
+    .about-doc-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 20px;
+      text-decoration: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+      transition: all 0.18s ease;
+
+      &:hover {
+        transform: translateY(-3px);
+        border-color: #818cf8;
+        box-shadow: 0 10px 24px -8px rgba(79, 70, 229, 0.15);
+
+        .doc-arrow {
+          transform: translateX(4px);
+          color: #4f46e5;
+        }
+      }
+
+      .doc-card-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+
+        .doc-icon-badge {
+          width: 42px;
+          height: 42px;
+          border-radius: 10px;
+          background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+          border: 1px solid #c7d2fe;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          svg {
+            width: 22px;
+            height: 22px;
+            fill: #4f46e5;
+          }
+        }
+
+        .doc-tag {
+          font-size: 0.66rem;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          color: #6366f1;
+          background: #eef2ff;
+          padding: 3px 8px;
+          border-radius: 999px;
+        }
+      }
+
+      .doc-card-body {
+        h3 {
+          font-size: 0.98rem;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0 0 6px 0;
+        }
+
+        p {
+          font-size: 0.8rem;
+          color: #64748b;
+          line-height: 1.5;
+          margin: 0;
+        }
+      }
+
+      .doc-card-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 10px;
+        border-top: 1px solid #f1f5f9;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #4f46e5;
+
+        .doc-arrow {
+          transition: transform 0.15s ease;
+        }
+      }
     }
   }
 }

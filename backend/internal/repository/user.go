@@ -28,6 +28,9 @@ type UserRepository interface {
 	Create(ctx context.Context, u *User) error
 	GetByID(ctx context.Context, id string) (*User, error)
 	GetByUsername(ctx context.Context, username string) (*User, error)
+	List(ctx context.Context) ([]User, error)
+	UpdateRole(ctx context.Context, id, role string) error
+	Delete(ctx context.Context, id string) error
 	Count(ctx context.Context) (int, error)
 }
 
@@ -99,4 +102,34 @@ func (r *SQLiteUserRepository) Count(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("failed to count users: %w", err)
 	}
 	return count, nil
+}
+
+func (r *SQLiteUserRepository) List(ctx context.Context) ([]User, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users ORDER BY created_at ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+func (r *SQLiteUserRepository) UpdateRole(ctx context.Context, id, role string) error {
+	query := `UPDATE users SET role = ?, updated_at = ? WHERE id = ?`
+	_, err := r.db.ExecContext(ctx, Rebind(r.driver, query), role, time.Now().UTC(), id)
+	return err
+}
+
+func (r *SQLiteUserRepository) Delete(ctx context.Context, id string) error {
+	query := `DELETE FROM users WHERE id = ?`
+	_, err := r.db.ExecContext(ctx, Rebind(r.driver, query), id)
+	return err
 }

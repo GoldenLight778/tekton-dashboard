@@ -15,9 +15,12 @@ var (
 
 // Claims represents the JWT payload claims for the platform
 type Claims struct {
-	UserID   string `json:"uid"`
-	Username string `json:"name"`
-	Role     string `json:"role"`
+	UserID   string   `json:"uid"`
+	Username string   `json:"name"`
+	Role     string   `json:"role"`
+	AuthMode string   `json:"auth_mode,omitempty"` // "password" or "k8s_token"
+	K8sToken string   `json:"k8s_token,omitempty"`
+	Groups   []string `json:"groups,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -38,15 +41,23 @@ func CheckPassword(hash, password string) bool {
 
 // GenerateToken creates a signed JWT token
 func GenerateToken(userID, username, role, secret string, duration time.Duration) (string, error) {
-	claims := Claims{
+	return GenerateExtendedToken(Claims{
 		UserID:   userID,
 		Username: username,
 		Role:     role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "devops-platform",
-		},
+		AuthMode: "password",
+	}, secret, duration)
+}
+
+// GenerateExtendedToken creates a signed JWT token with full K8s RBAC claims
+func GenerateExtendedToken(claims Claims, secret string, duration time.Duration) (string, error) {
+	if claims.AuthMode == "" {
+		claims.AuthMode = "password"
+	}
+	claims.RegisteredClaims = jwt.RegisteredClaims{
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration)),
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		Issuer:    "devops-platform",
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

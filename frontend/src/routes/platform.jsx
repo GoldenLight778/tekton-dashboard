@@ -11,28 +11,43 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+import { Navigate } from 'react-router';
 import {
   PlatformCredentials,
   PlatformDashboard,
-  PlatformPipelines,
-  PlatformProjects
+  PlatformLogin,
+  PlatformNamespaces,
+  PlatformRBAC
 } from '../containers/Platform';
 
 export default [
+  {
+    path: '/login',
+    element: <PlatformLogin />
+  },
   {
     path: '/platform/dashboard',
     element: <PlatformDashboard />
   },
   {
-    path: '/platform/projects',
-    element: <PlatformProjects />
-  },
-  {
-    path: '/platform/pipelines',
-    element: <PlatformPipelines />
+    path: '/platform/namespaces',
+    element: <PlatformNamespaces />
   },
   {
     path: '/platform/credentials',
     element: <PlatformCredentials />
+  },
+  {
+    path: '/platform/rbac',
+    element: <PlatformRBAC />
+  },
+  // Redirect legacy dual-track routes to unified Tekton/K8s native views
+  {
+    path: '/platform/projects',
+    element: <Navigate replace to="/platform/namespaces" />
+  },
+  {
+    path: '/platform/pipelines',
+    element: <Navigate replace to="/pipelines" />
   }
 ];

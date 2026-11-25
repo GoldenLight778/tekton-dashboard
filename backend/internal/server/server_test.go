@@ -162,3 +162,47 @@ func TestAuthLoginAndMe(t *testing.T) {
 		t.Fatalf("unexpected /me response: %+v", meResp)
 	}
 }
+
+func TestTektonApisFallback(t *testing.T) {
+	srv := setupTestServer(t)
+	defer srv.db.Close()
+
+	urls := []struct {
+		url          string
+		expectedKind string
+	}{
+		{"/apis/dashboard.tekton.dev/v1alpha1/extensions/", "ExtensionList"},
+		{"/apis/dashboard.tekton.dev/v1alpha1/extensions", "ExtensionList"},
+		{"/apis/tekton.dev/v1/pipelines/", "PipelineList"},
+		{"/apis/tekton.dev/v1/pipelines", "PipelineList"},
+		{"/apis/tekton.dev/v1/namespaces/default/pipelines/", "PipelineList"},
+		{"/apis/tekton.dev/v1/namespaces/default/pipelines", "PipelineList"},
+		{"/apis/tekton.dev/v1/pipelineruns/", "PipelineRunList"},
+		{"/apis/tekton.dev/v1/pipelineruns", "PipelineRunList"},
+		{"/apis/tekton.dev/v1/tasks/", "TaskList"},
+		{"/apis/tekton.dev/v1/tasks", "TaskList"},
+		{"/apis/triggers.tekton.dev/v1alpha1/eventlisteners/", "EventListenerList"},
+		{"/api/v1/namespaces", "NamespaceList"},
+		{"/api/v1/namespaces/", "NamespaceList"},
+	}
+
+	for _, item := range urls {
+		req, _ := http.NewRequest("GET", item.url, nil)
+		w := httptest.NewRecorder()
+		srv.Router().ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200 for %s, got %d. Body: %s", item.url, w.Code, w.Body.String())
+		}
+		var resp map[string]interface{}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Errorf("failed to parse JSON response for %s: %v", item.url, err)
+		}
+		if kind, ok := resp["kind"].(string); !ok || kind != item.expectedKind {
+			t.Errorf("expected kind %s for %s, got %v", item.expectedKind, item.url, resp["kind"])
+		}
+		if meta, ok := resp["metadata"].(map[string]interface{}); !ok || meta["resourceVersion"] == nil {
+			t.Errorf("expected metadata.resourceVersion for %s, got %v", item.url, resp["metadata"])
+		}
+	}
+}
+

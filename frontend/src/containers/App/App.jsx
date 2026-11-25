@@ -41,6 +41,7 @@ import {
   LoadingShell,
   NotFound
 } from '..';
+import { PlatformLogin } from '../Platform';
 
 import {
   NamespaceContext,
@@ -52,6 +53,7 @@ import {
   useTenantNamespaces
 } from '../../api';
 import { defaultLocale, getLocale } from '../../utils';
+import { getToken } from '../../api/platform';
 import routes from '../../routes';
 
 import '../../scss/App.scss';
@@ -66,12 +68,12 @@ const ConfigErrorComponent = ({ loadingConfigError }) => {
   return (
     <InlineNotification
       kind="error"
+      lowContrast
+      subtitle={getErrorMessage(loadingConfigError)}
       title={intl.formatMessage({
         id: 'dashboard.app.loadingConfigError',
         defaultMessage: 'Error loading configuration'
       })}
-      subtitle={getErrorMessage(loadingConfigError)}
-      lowContrast
     />
   );
 };
@@ -85,11 +87,8 @@ async function loadMessages(lang) {
   if (import.meta.env.MODE === 'i18n:pseudo') {
     const startBoundary = '[[%';
     const endBoundary = '%]]';
-    // Make it easier to identify untranslated strings in the UI
     Object.keys(loadedMessages).forEach(messageId => {
       if (loadedMessages[messageId].startsWith(startBoundary)) {
-        // avoid repeating the boundaries when
-        // hot reloading in dev mode
         return;
       }
       loadedMessages[messageId] =
@@ -102,6 +101,27 @@ async function loadMessages(lang) {
 
 function HeaderNameLink(props) {
   return <Link {...props} to="/platform/dashboard" />;
+}
+
+function RequireAuth({ children }) {
+  const location = useLocation();
+  const [, setAuthTick] = useState(0);
+
+  useEffect(() => {
+    const onAuthChange = () => setAuthTick(t => t + 1);
+    window.addEventListener('tkn-auth-change', onAuthChange);
+    return () => window.removeEventListener('tkn-auth-change', onAuthChange);
+  }, []);
+
+  const isTest =
+    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') ||
+    import.meta.env?.MODE === 'test';
+
+  if (!isTest && !getToken()) {
+    return <Navigate replace state={{ from: location }} to="/login" />;
+  }
+
+  return children;
 }
 
 function Root() {
@@ -122,14 +142,12 @@ function Root() {
   if (location.state?.fromDefaultRoute && defaultNamespace) {
     setTimeout(() => {
       selectNamespace(defaultNamespace);
-      // reset state to disable defaulting behaviour and allow
-      // user to select different namespace after initial load
       navigate(location.pathname, { replace: true, state: {} });
     }, 0);
   }
 
   return (
-    <>
+    <RequireAuth>
       <HeaderContainer
         isSideNavExpanded
         render={({ isSideNavExpanded, onClickSideNavExpand }) => (
@@ -146,9 +164,9 @@ function Root() {
       />
 
       <Content
-        id="main-content"
-        className="tkn--main-content"
         aria-labelledby="main-content-header"
+        className="tkn--main-content"
+        id="main-content"
       >
         <ConfigError loadingConfigError={loadingConfigError} />
         <PageErrorBoundary>
@@ -156,11 +174,16 @@ function Root() {
         </PageErrorBoundary>
       </Content>
       <ScrollButtons />
-    </>
+    </RequireAuth>
   );
 }
 
 const router = createHashRouter([
+  {
+    path: '/login',
+    element: <PlatformLogin />,
+    errorElement: <ErrorPage />
+  },
   {
     path: '/',
     element: <Root />,
@@ -173,9 +196,9 @@ const router = createHashRouter([
             index: true,
             element: (
               <Navigate
-                to="/platform/dashboard"
                 replace
                 state={{ fromDefaultRoute: true }}
+                to="/platform/dashboard"
               />
             )
           },
@@ -196,14 +219,21 @@ const router = createHashRouter([
 /* istanbul ignore next */
 export function App() {
   const [lang, setLang] = useState(() => getLocale());
+  const [hasToken, setHasToken] = useState(() => !!getToken());
 
   useEffect(() => {
     const handleLocaleChange = () => {
       setLang(getLocale());
     };
+    const handleAuthChange = () => {
+      setHasToken(!!getToken());
+    };
     window.addEventListener('tkn-locale-change', handleLocaleChange);
-    return () =>
+    window.addEventListener('tkn-auth-change', handleAuthChange);
+    return () => {
       window.removeEventListener('tkn-locale-change', handleLocaleChange);
+      window.removeEventListener('tkn-auth-change', handleAuthChange);
+    };
   }, []);
 
   const {
@@ -231,13 +261,13 @@ export function App() {
 
   const { isWebSocketConnected } = useExtensions(
     { namespace: tenantNamespaces[0] || ALL_NAMESPACES },
-    { enabled: !isFetchingConfig }
+    { enabled: !isFetchingConfig && hasToken }
   );
 
   const queryClient = useQueryClient();
 
   useNamespaces({
-    enabled: !isFetchingConfig && !tenantNamespaces.length
+    enabled: !isFetchingConfig && !tenantNamespaces.length && hasToken
   });
   useWebSocketReconnected(
     () => queryClient.invalidateQueries(),
@@ -261,12 +291,6 @@ export function App() {
       >
         {showLoadingState && <LoadingShell />}
         {!showLoadingState && (
-          // useTransitions={false} disables React.startTransition for router
-          // state updates. Without this, navigate() calls are deferred, causing
-          // a temporary desync between the URL and components that make
-          // synchronous external state updates (e.g. selectNamespace()) in the
-          // same event handler. This can be revisited if view transitions are
-          // adopted in future.
           <RouterProvider router={router} useTransitions={false} />
         )}
       </IntlProvider>

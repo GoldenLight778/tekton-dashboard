@@ -1,0 +1,473 @@
+# Copyright 2019-2026 The Tekton Authors & DevOps Platform Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# ============================================================================
+# Tekton DevOps Dashboard - Kubernetes Release Manifest (release.yaml)
+#
+# RBAC Design & Role Mapping:
+#   All platform-managed RBAC resources carry the mandatory label:
+#     tekton-devops-dashboard: "true"
+#
+#   1. tekton-devops-admin    -> Maps to DevOps Platform role "平台管理员" (default user: admin)
+#      - Full CRUD across namespaces on Tekton Pipelines, Tasks, Runs, Triggers, Secrets, ServiceAccounts
+#      - Read-only access to cluster Namespaces (Namespaces are created by K8s cluster admins)
+#      - Scoped RBAC management: only allowed to query/create/modify RBAC resources labeled with
+#        `tekton-devops-dashboard: "true"` (enforced by ValidatingAdmissionPolicy + Gateway LabelSelector)
+#   2. tekton-devops-worker   -> Maps to DevOps Platform role "工作人员"
+#      - Bound to specific Namespace(s) via RoleBinding (labeled `tekton-devops-dashboard: "true"`)
+#      - Full CRUD & execution on Pipelines, PipelineRuns, Tasks, TaskRuns, Triggers, and Secrets
+#        within authorized Namespace(s)
+#   3. tekton-devops-readonly -> Maps to DevOps Platform role "只读角色"
+#      - Bound via ClusterRoleBinding or Namespace RoleBinding (labeled `tekton-devops-dashboard: "true"`)
+#      - Read-only (get, list, watch) on Pipelines, Tasks, Runs, Triggers, Pods, and Pod Logs
+# ============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tekton-pipelines
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: extensions.dashboard.tekton.dev
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+spec:
+  group: dashboard.tekton.dev
+  names:
+    categories:
+      - tekton
+      - tekton-dashboard
+    kind: Extension
+    plural: extensions
+    shortNames:
+      - ext
+      - exts
+    singular: extension
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .spec.apiVersion
+          name: API version
+          type: string
+        - jsonPath: .spec.name
+          name: Kind
+          type: string
+        - jsonPath: .spec.displayname
+          name: Display name
+          type: string
+        - jsonPath: .metadata.creationTimestamp
+          name: Age
+          type: date
+      name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+      served: true
+      storage: true
+      subresources:
+        status: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-dashboard
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+    tekton-devops-dashboard: "true"
+---
+# ----------------------------------------------------------------------------
+# Gateway ServiceAccount ClusterRole: allows backend pod to proxy & impersonate
+# platform-authenticated users without requiring users to manage K8s tokens.
+# ----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tekton-dashboard-gateway
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+    tekton-devops-dashboard: "true"
+rules:
+  - apiGroups: [""]
+    resources: ["users", "groups", "serviceaccounts"]
+    verbs: ["impersonate"]
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["userextras/tekton-devops-dashboard"]
+    verbs: ["impersonate"]
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["selfsubjectaccessreviews", "subjectaccessreviews", "selfsubjectrulesreviews"]
+    verbs: ["create"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tekton-dashboard-gateway-binding
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+    tekton-devops-dashboard: "true"
+subjects:
+  - kind: ServiceAccount
+    name: tekton-dashboard
+    namespace: tekton-pipelines
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-dashboard-gateway
+---
+# ============================================================================
+# Role 1: 平台管理员 (tekton-devops-admin)
+# Maps to default DevOps Platform user `admin` and users assigned "平台管理员".
+# Has full Tekton/Triggers/Secret operational permissions across existing
+# namespaces, plus RBAC management strictly scoped to resources carrying the
+# `tekton-devops-dashboard: "true"` label.
+# ============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tekton-devops-admin
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+    app.kubernetes.io/managed-by: tekton-devops-dashboard
+    tekton-devops-dashboard: "true"
+    rbac.tekton-devops.io/role-type: "admin"
+  annotations:
+    rbac.tekton-devops.io/display-name: "平台管理员"
+    rbac.tekton-devops.io/description: "拥有 DevOps 平台所有流水线、任务、触发器、凭据操作权限，以及仅限带有 tekton-devops-dashboard 标签的集群 RBAC 查询、创建与修改权限"
+    rbac.tekton-devops.io/label-selector-scope: "tekton-devops-dashboard=true"
+rules:
+  # 1. Read-only cluster Namespaces & Pod execution observability (Namespaces are created by K8s cluster admin)
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+  # 2. Build Secrets, ServiceAccounts, ConfigMaps & Workspace PVCs management
+  - apiGroups: [""]
+    resources: ["secrets", "serviceaccounts", "configmaps", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # 3. Full Tekton Pipelines & Tasks operations
+  - apiGroups: ["tekton.dev"]
+    resources:
+      - tasks
+      - taskruns
+      - pipelines
+      - pipelineruns
+      - stepactions
+      - customruns
+      - runs
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  # 4. Full Tekton Triggers & EventListeners operations
+  - apiGroups: ["triggers.tekton.dev"]
+    resources:
+      - eventlisteners
+      - triggers
+      - triggerbindings
+      - clustertriggerbindings
+      - triggertemplates
+      - interceptors
+      - clusterinterceptors
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  # 5. Tekton Dashboard Extensions
+  - apiGroups: ["dashboard.tekton.dev"]
+    resources: ["extensions"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # 6. Scoped RBAC Management (Enforced to label `tekton-devops-dashboard: "true"` via ValidatingAdmissionPolicy & Gateway)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "clusterroles", "rolebindings", "clusterrolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "bind", "escalate"]
+---
+# Default ClusterRoleBinding for DevOps Platform `admin` user and `tekton-dashboard` ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tekton-devops-admin-binding
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+    app.kubernetes.io/managed-by: tekton-devops-dashboard
+    tekton-devops-dashboard: "true"
+subjects:
+  - kind: User
+    name: admin
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: tekton-devops:admin
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: tekton-dashboard
+    namespace: tekton-pipelines
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-devops-admin
+---
+# ============================================================================
+# Role 2: 工作人员 (tekton-devops-worker)
+# Bound to specific Namespace(s) via RoleBinding (with label `tekton-devops-dashboard: "true"`).
+# Grants full operational permissions on Tekton Pipelines, Tasks, Triggers, and
+# Secrets within the assigned Namespace(s).
+# ============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tekton-devops-worker
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+    app.kubernetes.io/managed-by: tekton-devops-dashboard
+    tekton-devops-dashboard: "true"
+    rbac.tekton-devops.io/role-type: "worker"
+  annotations:
+    rbac.tekton-devops.io/display-name: "工作人员"
+    rbac.tekton-devops.io/description: "在指定的一个或多个 K8s Namespace 内拥有 Tekton 流水线、任务、触发器及构建凭据 Secret 的创建、编辑、触发与删除权限"
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets", "serviceaccounts", "configmaps", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["tekton.dev"]
+    resources:
+      - tasks
+      - taskruns
+      - pipelines
+      - pipelineruns
+      - stepactions
+      - customruns
+      - runs
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: ["triggers.tekton.dev"]
+    resources:
+      - eventlisteners
+      - triggers
+      - triggerbindings
+      - triggertemplates
+      - interceptors
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["dashboard.tekton.dev"]
+    resources: ["extensions"]
+    verbs: ["get", "list", "watch"]
+---
+# ============================================================================
+# Role 3: 只读角色 (tekton-devops-readonly)
+# Bound via ClusterRoleBinding or Namespace RoleBinding (with label `tekton-devops-dashboard: "true"`).
+# Grants read-only observability on Pipelines, Tasks, Runs, Triggers, and Logs.
+# ============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tekton-devops-readonly
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+    app.kubernetes.io/managed-by: tekton-devops-dashboard
+    tekton-devops-dashboard: "true"
+    rbac.tekton-devops.io/role-type: "readonly"
+  annotations:
+    rbac.tekton-devops.io/display-name: "只读角色"
+    rbac.tekton-devops.io/description: "仅具备流水线、任务、执行记录、触发器及容器实时日志的只读查看权限，禁止任何创建、修改或删除操作"
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "pods/log", "events", "serviceaccounts", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["tekton.dev"]
+    resources:
+      - tasks
+      - taskruns
+      - pipelines
+      - pipelineruns
+      - stepactions
+      - customruns
+      - runs
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["triggers.tekton.dev"]
+    resources:
+      - eventlisteners
+      - triggers
+      - triggerbindings
+      - clustertriggerbindings
+      - triggertemplates
+      - interceptors
+      - clusterinterceptors
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["dashboard.tekton.dev"]
+    resources: ["extensions"]
+    verbs: ["get", "list", "watch"]
+---
+# ============================================================================
+# Kubernetes CEL ValidatingAdmissionPolicy:
+# Restricts platform admin RBAC mutations to ONLY objects carrying label:
+#   tekton-devops-dashboard: "true"
+# Ensures cluster-wide non-platform RBAC resources cannot be modified or deleted.
+# ============================================================================
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: tekton-devops-rbac-label-guard
+  labels:
+    app.kubernetes.io/part-of: tekton-dashboard
+    tekton-devops-dashboard: "true"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["roles", "clusterroles", "rolebindings", "clusterrolebindings"]
+  matchConditions:
+    - name: is-devops-platform-request
+      expression: >-
+        request.userInfo.username == 'admin' ||
+        'tekton-devops:admin' in request.userInfo.groups ||
+        request.userInfo.username == 'system:serviceaccount:tekton-pipelines:tekton-dashboard'
+  validations:
+    - expression: >-
+        (request.operation == 'DELETE' && oldObject != null &&
+         has(oldObject.metadata.labels) &&
+         'tekton-devops-dashboard' in oldObject.metadata.labels &&
+         oldObject.metadata.labels['tekton-devops-dashboard'] == 'true') ||
+        (request.operation != 'DELETE' && object != null &&
+         has(object.metadata.labels) &&
+         'tekton-devops-dashboard' in object.metadata.labels &&
+         object.metadata.labels['tekton-devops-dashboard'] == 'true' &&
+         (oldObject == null || (has(oldObject.metadata.labels) &&
+          'tekton-devops-dashboard' in oldObject.metadata.labels &&
+          oldObject.metadata.labels['tekton-devops-dashboard'] == 'true')))
+      message: "RBAC 权限边界拦截：平台管理员仅允许创建、修改或删除带有 label 'tekton-devops-dashboard: true' 的 RBAC 资源。"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: tekton-devops-rbac-label-guard-binding
+  labels:
+    app.kubernetes.io/part-of: tekton-dashboard
+    tekton-devops-dashboard: "true"
+spec:
+  policyName: tekton-devops-rbac-label-guard
+  validationActions: [Deny]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tekton-dashboard-info
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+    tekton-devops-dashboard: "true"
+data:
+  version: "v0.73.0-devops"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tekton-dashboard
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/name: dashboard
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+    app: tekton-dashboard
+spec:
+  ports:
+    - name: http
+      port: 9097
+      protocol: TCP
+      targetPort: 9097
+  selector:
+    app.kubernetes.io/name: dashboard
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-dashboard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tekton-dashboard
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/name: dashboard
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/version: v0.73.0-devops
+    app.kubernetes.io/part-of: tekton-dashboard
+    app: tekton-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dashboard
+      app.kubernetes.io/component: dashboard
+      app.kubernetes.io/instance: default
+      app.kubernetes.io/part-of: tekton-dashboard
+  template:
+    metadata:
+      name: tekton-dashboard
+      labels:
+        app.kubernetes.io/name: dashboard
+        app.kubernetes.io/component: dashboard
+        app.kubernetes.io/instance: default
+        app.kubernetes.io/part-of: tekton-dashboard
+        app: tekton-dashboard
+    spec:
+      serviceAccountName: tekton-dashboard
+      containers:
+        - name: tekton-dashboard
+          image: ghcr.io/tektoncd/dashboard/dashboard:latest
+          ports:
+            - containerPort: 9097
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9097
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: 9097
+          args:
+            - --port=9097
+            - --read-only=false
+            - --stream-logs=true
+            - --pipelines-namespace=tekton-pipelines
+            - --triggers-namespace=tekton-pipelines
+          env:
+            - name: INSTALLED_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace

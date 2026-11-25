@@ -9,11 +9,34 @@ import (
 	"devops-platform/internal/crypto"
 )
 
-// AuthMiddleware extracts and validates Bearer JWT token from Authorization header
-func AuthMiddleware(secret string) gin.HandlerFunc {
+// AuthMiddleware extracts and validates Bearer JWT token from Authorization header.
+// If allowDevFallback is true and Authorization header is missing, it falls back to the default admin user.
+func AuthMiddleware(secret string, allowDevFallback ...bool) gin.HandlerFunc {
+	isDev := len(allowDevFallback) > 0 && allowDevFallback[0]
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
+			if pToken := strings.TrimSpace(c.GetHeader("X-Platform-Token")); pToken != "" {
+				if strings.HasPrefix(strings.ToLower(pToken), "bearer ") {
+					authHeader = pToken
+				} else {
+					authHeader = "Bearer " + pToken
+				}
+			}
+		}
+		if authHeader == "" {
+			if isDev {
+				c.Set("claims", &crypto.Claims{
+					UserID:   "admin",
+					Username: "admin",
+					Role:     "admin",
+				})
+				c.Set("userID", "admin")
+				c.Set("username", "admin")
+				c.Set("role", "admin")
+				c.Next()
+				return
+			}
 			Error(c, http.StatusUnauthorized, 40101, "missing authorization header")
 			c.Abort()
 			return

@@ -59,6 +59,38 @@ export async function getInstallProperties() {
   let data;
   try {
     data = await get(uri);
+    if (data && typeof data === 'object') {
+      if (data.DashboardNamespace && !data.dashboardNamespace) {
+        data.dashboardNamespace = data.DashboardNamespace;
+      }
+      if (data.DashboardVersion && !data.dashboardVersion) {
+        data.dashboardVersion = data.DashboardVersion;
+      }
+      if (data.PipelineNamespace && !data.pipelinesNamespace) {
+        data.pipelinesNamespace = data.PipelineNamespace;
+      }
+      if (data.PipelineVersion && !data.pipelinesVersion) {
+        data.pipelinesVersion = data.PipelineVersion;
+      }
+      if (data.TriggersNamespace && !data.triggersNamespace) {
+        data.triggersNamespace = data.TriggersNamespace;
+      }
+      if (data.TriggersVersion && !data.triggersVersion) {
+        data.triggersVersion = data.TriggersVersion;
+      }
+      if (data.ReadOnly !== undefined && data.isReadOnly === undefined) {
+        data.isReadOnly = data.ReadOnly;
+      }
+      if (data.StreamLogs !== undefined && data.streamLogs === undefined) {
+        data.streamLogs = data.StreamLogs;
+      }
+      if (data.DefaultNamespace && !data.defaultNamespace) {
+        data.defaultNamespace = data.DefaultNamespace;
+      }
+      if (data.TenantNamespaces && !data.tenantNamespaces) {
+        data.tenantNamespaces = data.TenantNamespaces;
+      }
+    }
   } catch (error) {
     if (error?.response?.status === 404) {
       console.warn(

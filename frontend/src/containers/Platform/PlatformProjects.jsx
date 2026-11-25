@@ -67,7 +67,8 @@ export function PlatformProjects() {
       setLoading(true);
       setError(null);
       const data = await getProjects();
-      setProjects(data || []);
+      const list = Array.isArray(data) ? data : data?.items || [];
+      setProjects(list);
     } catch (err) {
       setError(
         err.message || t('platform.error.fetchProjects', '加载项目列表失败')
@@ -134,7 +135,10 @@ export function PlatformProjects() {
     { key: 'actions', header: t('platform.table.actions', '操作') }
   ];
 
-  const rows = projects.map(proj => ({
+  const projectList = Array.isArray(projects)
+    ? projects
+    : projects?.items || [];
+  const rows = projectList.map(proj => ({
     id: proj.id,
     name: (
       <div>

@@ -62,6 +62,26 @@ describe('Platform API Client', () => {
     expect(platformAPI.getToken()).toBe(mockToken);
   });
 
+  it('performs autoLogin and returns token', async () => {
+    const mockToken = 'mocked-auto-jwt-token';
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        code: 0,
+        message: 'ok',
+        data: { token: mockToken, user: { username: 'admin', role: 'admin' } }
+      })
+    });
+
+    const token = await platformAPI.autoLogin();
+    expect(token).toBe(mockToken);
+    expect(platformAPI.getToken()).toBe(mockToken);
+
+    // When token already exists, autoLogin returns it without fetching
+    const cached = await platformAPI.autoLogin();
+    expect(cached).toBe(mockToken);
+  });
+
   it('handles error response by throwing descriptive error', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: false,

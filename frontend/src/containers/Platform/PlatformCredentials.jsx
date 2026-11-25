@@ -12,9 +12,9 @@ limitations under the License.
 */
 
 import { useEffect, useState } from 'react';
-import { useIntl } from 'react-intl';
 import {
   Button,
+  Checkbox,
   DataTable,
   InlineNotification,
   Loading,
@@ -33,316 +33,347 @@ import {
 import {
   Add as AddIcon,
   TrashCan as DeleteIcon,
-  Folder as FolderIcon,
   ApiKey as KeyIcon,
   Renew as RefreshIcon
 } from '@carbon/react/icons';
+import { ALL_NAMESPACES } from '@tektoncd/dashboard-utils';
 
+import { useSelectedNamespace } from '../../api';
 import {
-  createCredential,
-  deleteCredential,
-  getCredentials,
-  getProjects
+  createK8sSecret,
+  deleteK8sSecret,
+  getK8sNamespaces,
+  getK8sSecrets,
+  usePermissions
 } from '../../api/platform';
 
-export function PlatformCredentials() {
-  const intl = useIntl();
-  /* eslint-disable formatjs/enforce-default-message */
-  const t = (id, defaultMessage, values) =>
-    intl.formatMessage({ id, defaultMessage }, values);
-  /* eslint-enable formatjs/enforce-default-message */
+const SECRET_TYPES = [
+  {
+    value: 'kubernetes.io/basic-auth',
+    label: 'Git 账号密码 / Personal Access Token (kubernetes.io/basic-auth)',
+    annotation: 'tekton.dev/git-0',
+    defaultTarget: 'https://github.com'
+  },
+  {
+    value: 'kubernetes.io/ssh-auth',
+    label: 'Git SSH 私钥凭据 (kubernetes.io/ssh-auth)',
+    annotation: 'tekton.dev/git-0',
+    defaultTarget: 'github.com'
+  },
+  {
+    value: 'kubernetes.io/dockerconfigjson',
+    label: 'Docker / Harbor 镜像仓库凭据 (tekton.dev/docker-0)',
+    annotation: 'tekton.dev/docker-0',
+    defaultTarget: 'https://index.docker.io/v1/'
+  },
+  {
+    value: 'Opaque',
+    label: '通用环境变量密钥 (Opaque Secret)',
+    annotation: 'none',
+    defaultTarget: ''
+  }
+];
 
-  const [projects, setProjects] = useState([]);
-  const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [credentials, setCredentials] = useState([]);
-  const [loading, setLoading] = useState(false);
+export function PlatformCredentials() {
+  const { selectedNamespace } = useSelectedNamespace();
+  const perm = usePermissions(selectedNamespace);
+
+  const [namespaces, setNamespaces] = useState([]);
+  const [secrets, setSecrets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
 
-  // Modal State
+  // Create Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [credName, setCredName] = useState('');
-  const [credType, setCredType] = useState('git_token');
-  const [secretVal, setSecretVal] = useState('');
+  const [secName, setSecName] = useState('');
+  const [targetNS, setTargetNS] = useState(
+    selectedNamespace && selectedNamespace !== ALL_NAMESPACES
+      ? selectedNamespace
+      : 'default'
+  );
+  const [secType, setSecType] = useState('kubernetes.io/basic-auth');
+  const [targetURL, setTargetURL] = useState('https://github.com');
+  const [username, setUsername] = useState('git');
+  const [secretValue, setSecretValue] = useState('');
+  const [serviceAccount, setServiceAccount] = useState('default');
+  const [autoBindSA, setAutoBindSA] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const projs = await getProjects();
-        setProjects(projs || []);
-        if (projs?.length > 0) {
-          setSelectedProjectId(projs[0].id);
-        }
-      } catch (err) {
-        setError(
-          err.message || t('platform.error.fetchProjects', '加载项目列表失败')
-        );
-      }
-    };
-    loadProjects();
-  }, []);
-
-  const fetchCredentials = async (projId = selectedProjectId) => {
-    if (!projId) {
-      setCredentials([]);
-      return;
-    }
+  const fetchData = async (isManual = false) => {
     try {
-      setLoading(true);
+      if (isManual) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
-      const data = await getCredentials(projId);
-      setCredentials(data || []);
+      const [secList, nsList] = await Promise.all([
+        getK8sSecrets(selectedNamespace),
+        getK8sNamespaces()
+      ]);
+      setSecrets(Array.isArray(secList) ? secList : []);
+      setNamespaces(Array.isArray(nsList) ? nsList : []);
     } catch (err) {
-      setError(
-        err.message || t('platform.error.fetchCredentials', '加载凭据列表失败')
-      );
+      setError(err.message || '加载凭据列表失败');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    if (selectedProjectId) {
-      fetchCredentials(selectedProjectId);
+    if (selectedNamespace && selectedNamespace !== ALL_NAMESPACES) {
+      setTargetNS(selectedNamespace);
     }
-  }, [selectedProjectId]);
+    fetchData(false);
+  }, [selectedNamespace]);
+
+  const handleTypeChange = newType => {
+    setSecType(newType);
+    const preset = SECRET_TYPES.find(t => t.value === newType);
+    if (preset) {
+      setTargetURL(preset.defaultTarget);
+    }
+  };
 
   const handleCreate = async () => {
-    if (!credName.trim()) {
-      setError(t('platform.error.credNameReq', '凭据名称不能为空'));
+    if (!secName.trim()) {
+      setError('Secret 名称不能为空（小写字母、数字、连字符）');
       return;
     }
-    if (!secretVal.trim()) {
-      setError(t('platform.error.secretValReq', '密钥内容不能为空'));
+    if (!secretValue.trim()) {
+      setError('密钥内容 (Token / Password / SSH 私钥) 不能为空');
       return;
     }
     try {
       setSubmitting(true);
       setError(null);
-      await createCredential(selectedProjectId, {
-        name: credName,
-        type: credType,
-        secret: secretVal
+      await createK8sSecret(targetNS, {
+        name: secName.trim().toLowerCase(),
+        namespace: targetNS,
+        secret_type: secType,
+        target_url: targetURL.trim(),
+        username: username.trim(),
+        secret_value: secretValue,
+        service_account: serviceAccount.trim() || 'default',
+        auto_bind_sa: autoBindSA
       });
       setIsModalOpen(false);
-      setCredName('');
-      setSecretVal('');
+      setSecName('');
+      setSecretValue('');
       setSuccessMsg(
-        t(
-          'platform.success.credStored',
-          '凭据 ‘{name}’ 已通过 AES-256-GCM 高度加密存入安全保险库。',
-          { name: credName }
-        )
+        `已在命名空间 [${targetNS}] 创建 K8s Secret "${secName.trim()}"${
+          autoBindSA
+            ? ` 并自动挂载至 ServiceAccount "${serviceAccount || 'default'}"`
+            : ''
+        }`
       );
-      fetchCredentials();
+      fetchData();
     } catch (err) {
-      setError(
-        err.message || t('platform.error.storeCredential', '存储凭据失败')
-      );
+      setError(err.message || '创建 K8s Secret 失败');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDelete = async id => {
+  const handleDelete = async item => {
     if (
       !window.confirm(
-        t('platform.confirm.deleteCredential', '确定要删除此加密机密凭据吗？')
+        `确定要删除命名空间 [${item.namespace}] 下的 K8s Secret "${item.name}" 吗？`
       )
     ) {
       return;
     }
     try {
-      await deleteCredential(id);
-      fetchCredentials();
+      await deleteK8sSecret(item.namespace, item.name);
+      setSuccessMsg(`已删除 K8s Secret: ${item.name}`);
+      fetchData();
     } catch (err) {
-      setError(
-        err.message || t('platform.error.deleteCredential', '删除凭据失败')
-      );
+      setError(err.message || '删除 Secret 失败');
     }
   };
 
   const headers = [
-    { key: 'name', header: t('platform.table.credential', '凭据名称') },
-    { key: 'type', header: t('platform.table.type', '凭据类型') },
-    {
-      key: 'masked',
-      header: t('platform.table.securityStatus', '安全加密状态')
-    },
-    { key: 'created_at', header: t('platform.table.createdDate', '创建时间') },
-    { key: 'actions', header: t('platform.table.actions', '操作') }
+    { key: 'name', header: 'Secret 名称' },
+    { key: 'namespace', header: '所属 Namespace' },
+    { key: 'secret_type', header: 'Kubernetes Secret 类型' },
+    { key: 'annotation', header: 'Tekton 认证注解与目标地址' },
+    { key: 'service_account', header: '自动挂载 ServiceAccount' },
+    { key: 'masked_value', header: '脱敏指纹' },
+    { key: 'actions', header: '操作' }
   ];
 
-  const rows = credentials.map(c => ({
-    id: c.id,
-    name: <strong style={{ color: '#0f172a' }}>{c.name}</strong>,
-    type: <span className="code-chip">{c.type}</span>,
-    masked: (
-      <span
-        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-      >
-        <span style={{ color: '#10b981', fontSize: '10px' }}>🔒</span>
-        <span className="code-chip">{c.masked_value || '••••••••'}</span>
-        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-          ({t('platform.table.encrypted', 'AES-256 加密')})
-        </span>
-      </span>
-    ),
-    created_at: new Date(c.created_at).toLocaleString(),
-    actions: (
-      <Button
-        size="sm"
-        kind="danger--ghost"
-        renderIcon={DeleteIcon}
-        hasIconOnly
-        iconDescription={t('platform.deleteCredential', '删除凭据')}
-        onClick={() => handleDelete(c.id)}
-      />
-    )
+  const rows = secrets.map(sec => ({
+    id: `${sec.namespace}/${sec.name}`,
+    name: sec.name,
+    namespace: sec.namespace,
+    secret_type: sec.secret_type,
+    annotation:
+      sec.annotation_type && sec.annotation_type !== 'none'
+        ? `${sec.annotation_type}: ${sec.target_url}`
+        : '通用 Opaque Secret',
+    service_account: sec.auto_bind_sa
+      ? `已挂载 -> ${sec.service_account || 'default'}`
+      : '未自动挂载',
+    masked_value: sec.masked_value || '******',
+    raw: sec
   }));
 
   return (
     <div className="platform-container">
-      <div className="platform-hero">
-        <div className="platform-hero-content">
-          <h1>
-            <KeyIcon size={32} />{' '}
-            {t('platform.credentials.title', '安全与凭据保险库')}
-          </h1>
-          <p>
-            {t(
-              'platform.credentials.subtitle',
-              '基于 AES-256-GCM 高强度加密保险库，安全存储 Git 访问令牌、镜像仓库密钥及 Kubeconfig 凭据。'
-            )}
+      <div className="platform-header">
+        <div className="title-area">
+          <h1>构建凭据</h1>
+          <p className="subtitle">
+            按命名空间隔离托管 Git 代码仓库与容器镜像仓库 Secret，并自动关联至流水线 ServiceAccount
           </p>
         </div>
-        <div className="platform-hero-actions">
+        <div className="header-actions" style={{ display: 'flex', gap: '10px' }}>
           <Button
-            size="md"
+            className={refreshing ? 'is-spinning-icon' : ''}
+            disabled={refreshing || loading}
             kind="ghost"
+            onClick={() => fetchData(true)}
             renderIcon={RefreshIcon}
-            onClick={() => fetchCredentials()}
+            size="md"
           >
-            {t('platform.refresh', '刷新')}
+            {refreshing ? '刷新中...' : '刷新'}
           </Button>
           <Button
-            size="md"
+            disabled={!perm.canWrite}
             kind="primary"
-            renderIcon={AddIcon}
             onClick={() => setIsModalOpen(true)}
-            disabled={!selectedProjectId}
+            renderIcon={AddIcon}
+            size="md"
+            title={
+              !perm.canWrite
+                ? `当前角色 (${perm.k8s_cluster_role}) 为只读权限`
+                : '新建凭据'
+            }
           >
-            {t('platform.credentials.new', '添加凭据')}
+            新建凭据
           </Button>
         </div>
       </div>
 
-      <div className="platform-filter-bar">
-        <div className="filter-bar-left">
-          <span className="filter-bar-label">
-            <FolderIcon size={16} />
-            {t('platform.pipelines.selectProject', '所属工作空间')}:
-          </span>
-          <div className="filter-bar-select">
-            <Select
-              id="cred-project-selector"
-              labelText=""
-              hideLabel
-              size="sm"
-              value={selectedProjectId}
-              onChange={e => setSelectedProjectId(e.target.value)}
-            >
-              {projects.map(p => (
-                <SelectItem key={p.id} value={p.id} text={p.name} />
-              ))}
-            </Select>
-          </div>
-        </div>
-      </div>
-
-      {successMsg && (
+      {!perm.canWrite && (
         <InlineNotification
-          kind="success"
-          title={t('platform.notification.success', '操作成功')}
-          subtitle={successMsg}
-          onCloseButtonClick={() => setSuccessMsg(null)}
-          style={{ marginBottom: '20px' }}
+          kind="info"
+          lowContrast
+          style={{ marginBottom: '1rem', maxWidth: '100%' }}
+          subtitle={`当前账号 (${perm.username}) 在此命名空间下为只读角色 (${perm.k8s_cluster_role})。`}
+          title="只读模式"
         />
       )}
 
       {error && (
         <InlineNotification
           kind="error"
-          title={t('dashboard.about.error', '操作失败')}
+          lowContrast
+          onCloseButtonClick={() => setError(null)}
+          style={{ marginBottom: '1rem', maxWidth: '100%' }}
           subtitle={error}
-          style={{ marginBottom: '20px' }}
+          title="操作异常"
         />
       )}
 
-      {loading ? (
-        <Loading
-          description={t(
-            'platform.loading.credentials',
-            '正在安全加载凭据元数据...'
-          )}
-          withOverlay={false}
+      {successMsg && (
+        <InlineNotification
+          kind="success"
+          lowContrast
+          onCloseButtonClick={() => setSuccessMsg(null)}
+          style={{ marginBottom: '1rem', maxWidth: '100%' }}
+          subtitle={successMsg}
+          title="成功"
         />
-      ) : rows.length === 0 ? (
-        <div className="platform-empty-state">
-          <KeyIcon className="empty-icon" />
-          <h3>
-            {t('platform.credentials.emptyTitle', '该项目下暂无加密凭据')}
-          </h3>
-          <p>
-            {t(
-              'platform.credentials.emptyDesc',
-              '安全注入 Git 访问令牌或镜像仓库凭据到 Tekton 流水线任务中。'
+      )}
+
+      <div className="platform-table-wrapper">
+        {loading ? (
+          <div style={{ padding: '24px' }}>
+            <Loading description="正在加载构建凭据..." withOverlay={false} />
+          </div>
+        ) : secrets.length === 0 ? (
+          <div className="platform-empty-state" style={{ border: 'none' }}>
+            <KeyIcon className="empty-icon" />
+            <h3>
+              当前作用域 (
+              {selectedNamespace === ALL_NAMESPACES || !selectedNamespace
+                ? 'All Namespaces'
+                : selectedNamespace}
+              ) 暂无构建凭据
+            </h3>
+            <p>
+              新建 Git Token、SSH 私钥或镜像仓库凭据，系统将自动完成注解写入与 ServiceAccount 挂载。
+            </p>
+            {perm.canWrite && (
+              <Button
+                kind="primary"
+                onClick={() => setIsModalOpen(true)}
+                renderIcon={AddIcon}
+                size="md"
+              >
+                新建凭据
+              </Button>
             )}
-          </p>
-          <Button
-            size="md"
-            kind="primary"
-            renderIcon={AddIcon}
-            onClick={() => setIsModalOpen(true)}
-            disabled={!selectedProjectId}
-          >
-            {t('platform.credentials.create', '添加新凭据')}
-          </Button>
-        </div>
-      ) : (
-        <div className="platform-table-wrapper">
-          <DataTable rows={rows} headers={headers}>
-            {({
-              rows: tableRows,
-              headers: tableHeaders,
-              getTableProps,
-              getHeaderProps,
-              getRowProps
-            }) => (
+          </div>
+        ) : (
+          <DataTable headers={headers} rows={rows}>
+            {({ rows, headers, getHeaderProps, getRowProps, getTableProps }) => (
               <Table {...getTableProps()}>
                 <TableHead>
                   <TableRow>
-                    {tableHeaders.map(header => {
-                      const { key, ...headerProps } = getHeaderProps({
-                        header
-                      });
-                      return (
-                        <TableHeader key={key || header.key} {...headerProps}>
-                          {header.header}
-                        </TableHeader>
-                      );
-                    })}
+                    {headers.map(header => (
+                      <TableHeader
+                        {...getHeaderProps({ header })}
+                        key={header.key}
+                      >
+                        {header.header}
+                      </TableHeader>
+                    ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {tableRows.map(row => {
-                    const { key, ...rowProps } = getRowProps({ row });
+                  {rows.map(row => {
+                    const secItem = secrets.find(
+                      s => `${s.namespace}/${s.name}` === row.id
+                    );
                     return (
-                      <TableRow key={key || row.id} {...rowProps}>
-                        {row.cells.map(cell => (
-                          <TableCell key={cell.id}>{cell.value}</TableCell>
-                        ))}
+                      <TableRow {...getRowProps({ row })} key={row.id}>
+                        {row.cells.map(cell => {
+                          if (
+                            cell.info.header === 'name' ||
+                            cell.info.header === 'namespace' ||
+                            cell.info.header === 'masked_value'
+                          ) {
+                            return (
+                              <TableCell key={cell.id}>
+                                <code className="row-code-tag">{cell.value}</code>
+                              </TableCell>
+                            );
+                          }
+                          if (cell.info.header === 'actions') {
+                            return (
+                              <TableCell key={cell.id}>
+                                {perm.canWrite && secItem && (
+                                  <Button
+                                    hasIconOnly
+                                    iconDescription="删除凭据"
+                                    kind="danger--ghost"
+                                    onClick={() => handleDelete(secItem)}
+                                    renderIcon={DeleteIcon}
+                                    size="sm"
+                                  />
+                                )}
+                              </TableCell>
+                            );
+                          }
+                          return (
+                            <TableCell key={cell.id}>{cell.value}</TableCell>
+                          );
+                        })}
                       </TableRow>
                     );
                   })}
@@ -350,59 +381,133 @@ export function PlatformCredentials() {
               </Table>
             )}
           </DataTable>
-        </div>
-      )}
+        )}
+      </div>
 
       <Modal
         className="platform-modal"
-        size="md"
-        open={isModalOpen}
-        modalHeading={t('platform.credentials.modalHeading', '存储加密凭据')}
-        primaryButtonText={
-          submitting
-            ? t('platform.submitting', '加密存储中...')
-            : t('platform.credentials.create', '存储凭据')
-        }
-        secondaryButtonText={t('carbon.table.batch.cancel', '取消')}
-        onRequestSubmit={handleCreate}
+        modalHeading="新建构建凭据"
         onRequestClose={() => setIsModalOpen(false)}
+        onRequestSubmit={handleCreate}
+        open={isModalOpen}
         primaryButtonDisabled={submitting}
+        primaryButtonText={
+          submitting ? '创建中...' : '确定创建'
+        }
+        secondaryButtonText="取消"
       >
-        <div className="platform-modal-form">
-          <TextInput
-            id="cred-name-input"
-            labelText={t('platform.credentials.name', '凭据名称')}
-            placeholder={t(
-              'platform.credentials.namePlaceholder',
-              '例如 github-pat 或 docker-auth'
-            )}
-            value={credName}
-            onChange={e => setCredName(e.target.value)}
-            required
-          />
-          <Select
-            id="cred-type-select"
-            labelText={t('platform.credentials.type', '凭据类型')}
-            value={credType}
-            onChange={e => setCredType(e.target.value)}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '1rem'
+            }}
           >
-            <SelectItem value="git_token" text="Git Access Token (PAT)" />
-            <SelectItem value="ssh_key" text="SSH Private Key" />
-            <SelectItem value="kubeconfig" text="Kubernetes Kubeconfig" />
-            <SelectItem value="secret_text" text="Secret Text / API Token" />
+            <TextInput
+              id="k8s-sec-name"
+              labelText="Secret 资源名称 (metadata.name)"
+              onChange={e => setSecName(e.target.value)}
+              placeholder="例如: github-pat-secret"
+              value={secName}
+            />
+            <Select
+              id="k8s-sec-ns"
+              labelText="所属 Kubernetes Namespace"
+              onChange={e => setTargetNS(e.target.value)}
+              value={targetNS}
+            >
+              {namespaces.map(ns => (
+                <SelectItem
+                  key={ns.name}
+                  text={`${ns.name}${ns.alias ? ` (${ns.alias})` : ''}`}
+                  value={ns.name}
+                />
+              ))}
+            </Select>
+          </div>
+
+          <Select
+            id="k8s-sec-type"
+            labelText="凭据类型 (K8s Secret Type & Tekton Annotation)"
+            onChange={e => handleTypeChange(e.target.value)}
+            value={secType}
+          >
+            {SECRET_TYPES.map(st => (
+              <SelectItem key={st.value} text={st.label} value={st.value} />
+            ))}
           </Select>
+
+          {secType !== 'Opaque' && (
+            <TextInput
+              helperText={
+                secType === 'kubernetes.io/dockerconfigjson'
+                  ? '将自动写入 metadata.annotations["tekton.dev/docker-0"]'
+                  : '将自动写入 metadata.annotations["tekton.dev/git-0"]'
+              }
+              id="k8s-sec-url"
+              labelText="目标服务器地址 (Server URL / Host)"
+              onChange={e => setTargetURL(e.target.value)}
+              placeholder="例如: https://github.com 或 https://harbor.example.com"
+              value={targetURL}
+            />
+          )}
+
+          {(secType === 'kubernetes.io/basic-auth' ||
+            secType === 'kubernetes.io/dockerconfigjson') && (
+            <TextInput
+              id="k8s-sec-user"
+              labelText="认证账号 (Username)"
+              onChange={e => setUsername(e.target.value)}
+              placeholder="例如: git 或 docker-user"
+              value={username}
+            />
+          )}
+
           <TextArea
-            id="cred-secret-input"
-            labelText={t('platform.credentials.secret', '密钥内容')}
-            helperText={t(
-              'platform.credentials.secretHelper',
-              '经服务端主密钥通过 AES-256-GCM 算法加密，API 响应中绝不泄露明文。'
-            )}
-            rows={4}
-            value={secretVal}
-            onChange={e => setSecretVal(e.target.value)}
-            required
+            id="k8s-sec-val"
+            labelText={
+              secType === 'kubernetes.io/ssh-auth'
+                ? 'SSH 私钥内容 (id_rsa / id_ed25519)'
+                : '密钥 / Token / 密码内容 (stringData)'
+            }
+            onChange={e => setSecretValue(e.target.value)}
+            placeholder={
+              secType === 'kubernetes.io/ssh-auth'
+                ? '-----BEGIN OPENSSH PRIVATE KEY-----\n...'
+                : '请输入 Access Token 或密码...'
+            }
+            rows={3}
+            value={secretValue}
           />
+
+          <div
+            style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '0.85rem 1rem'
+            }}
+          >
+            <Checkbox
+              checked={autoBindSA}
+              id="k8s-sec-autobind"
+              labelText="自动将此 Secret 挂载至该 Namespace 的流水线 ServiceAccount（推荐，免去手动配置 YAML）"
+              onChange={(_, { checked }) => setAutoBindSA(checked)}
+            />
+            {autoBindSA && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <TextInput
+                  id="k8s-sec-sa"
+                  labelText="目标 ServiceAccount 名称"
+                  onChange={e => setServiceAccount(e.target.value)}
+                  placeholder="default 或 pipeline"
+                  size="sm"
+                  value={serviceAccount}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
     </div>

@@ -87,3 +87,4 @@ users:
 		t.Errorf("expected namespace custom-ns, got %s", bundle.Namespace)
 	}
 }
+

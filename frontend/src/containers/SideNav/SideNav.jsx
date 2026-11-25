@@ -42,6 +42,7 @@ import {
   useSelectedNamespace,
   useTenantNamespaces
 } from '../../api';
+import { usePermissions } from '../../api/platform';
 
 const { Kubernetes: KubernetesIcon } = Icons;
 
@@ -54,6 +55,7 @@ function SideNav({ expanded, showKubernetesResources = false }) {
   const location = useLocation();
 
   const { selectedNamespace } = useSelectedNamespace();
+  const perm = usePermissions(selectedNamespace);
   const tenantNamespaces = useTenantNamespaces();
   const { data: extensions = [] } = useExtensions(
     {
@@ -113,31 +115,12 @@ function SideNav({ expanded, showKubernetesResources = false }) {
           <SideNavMenuItem {...getMenuItemProps('/platform/dashboard')}>
             {t('platform.nav.overview', '平台大盘')}
           </SideNavMenuItem>
-          <SideNavMenuItem {...getMenuItemProps('/platform/projects')}>
-            {t('platform.nav.projects', '项目管理')}
+          <SideNavMenuItem {...getMenuItemProps('/platform/namespaces')}>
+            {t('platform.nav.namespaces', '命名空间 (Namespaces)')}
           </SideNavMenuItem>
         </SideNavMenu>
 
-        {/* 2. 流水线中心 - 整合平台编排与 Tekton 原生流水线 */}
-        <SideNavMenu
-          defaultExpanded
-          renderIcon={RocketIcon}
-          title={t('platform.nav.pipelines', '流水线中心')}
-        >
-          <SideNavMenuItem {...getMenuItemProps('/platform/pipelines')}>
-            {t('platform.nav.platformPipelines', '编排配置')}
-          </SideNavMenuItem>
-          <SideNavMenuItem {...getMenuItemProps(getPath(urls.pipelines.all()))}>
-            {t('platform.nav.tektonPipelines', 'Tekton 流水线')}
-          </SideNavMenuItem>
-          <SideNavMenuItem
-            {...getMenuItemProps(getPath(urls.pipelineRuns.all()))}
-          >
-            {t('platform.nav.pipelineRuns', '流水线执行')}
-          </SideNavMenuItem>
-        </SideNavMenu>
-
-        {/* 3. 任务与步骤 - 整合 Tekton Tasks & StepActions */}
+        {/* 2. 任务管理 - 整合 Tekton Tasks & StepActions */}
         <SideNavMenu
           defaultExpanded
           renderIcon={TaskIcon}
@@ -158,6 +141,22 @@ function SideNav({ expanded, showKubernetesResources = false }) {
             {...getMenuItemProps(getPath(urls.customRuns.all()))}
           >
             {t('platform.nav.customRuns', '自定义执行')}
+          </SideNavMenuItem>
+        </SideNavMenu>
+
+        {/* 3. 流水线中心 - 纯正 Tekton 原生流水线与执行 */}
+        <SideNavMenu
+          defaultExpanded
+          renderIcon={RocketIcon}
+          title={t('platform.nav.pipelines', '流水线中心')}
+        >
+          <SideNavMenuItem {...getMenuItemProps(getPath(urls.pipelines.all()))}>
+            {t('platform.nav.tektonPipelines', 'Tekton 流水线')}
+          </SideNavMenuItem>
+          <SideNavMenuItem
+            {...getMenuItemProps(getPath(urls.pipelineRuns.all()))}
+          >
+            {t('platform.nav.pipelineRuns', '流水线执行')}
           </SideNavMenuItem>
         </SideNavMenu>
 
@@ -201,15 +200,20 @@ function SideNav({ expanded, showKubernetesResources = false }) {
           </SideNavMenu>
         )}
 
-        {/* 5. 安全与凭据 */}
+        {/* 5. 安全与 K8s RBAC 权限 */}
         <SideNavMenu
           defaultExpanded
           renderIcon={KeyIcon}
-          title={t('platform.nav.security', '安全与凭据')}
+          title={t('platform.nav.security', '安全与访问控制')}
         >
           <SideNavMenuItem {...getMenuItemProps('/platform/credentials')}>
-            {t('platform.nav.credentials', '凭据保险库')}
+            {t('platform.nav.credentials', 'K8s 凭据中心 (Secrets)')}
           </SideNavMenuItem>
+          {perm.isAdmin && (
+            <SideNavMenuItem {...getMenuItemProps('/platform/rbac')}>
+              {t('platform.nav.rbac', 'RBAC 权限管理')}
+            </SideNavMenuItem>
+          )}
         </SideNavMenu>
 
         {showKubernetesResources && (
