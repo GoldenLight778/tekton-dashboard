@@ -12,11 +12,11 @@ backend/bin/
 *.dylib
 *.test
 *.out
-platform
-platform-*
-dashboard
-backend/platform*
-backend/dashboard*
+/platform
+/platform-*
+/dashboard
+/backend/platform*
+/backend/dashboard*
 
 # ==========================================
 # Database & Runtime Data Files
@@ -86,7 +86,7 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 /tmp
-main
+/main
 
 # ==========================================
 # E2E Testing Outputs
